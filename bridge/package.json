@@ -1,0 +1,31 @@
+{
+  "name": "photon-dot-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "read-batch": "bun run src/read-batch.ts",
+    "enqueue": "bun run src/enqueue.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "dot-agent": "bun run src/dot-agent.ts",
+    "start:dot": "bun run src/start-dot.ts",
+    "preflight": "bun run src/preflight.ts"
+  },
+  "dependencies": {
+    "heif2jpeg": "0.1.6",
+    "@spectrum-ts/core": "12.10.1",
+    "@spectrum-ts/imessage": "12.10.1"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "@types/node": "22.20.4",
+    "typescript": "6.0.3"
+  },
+  "packageManager": "bun@1.4.2",
+  "engines": {
+    "bun": ">=1.4.2",
+    "node": ">=22"
+  }
+}

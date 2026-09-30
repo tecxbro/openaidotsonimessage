@@ -1,0 +1,68 @@
+{
+  "title": "Your dot. In iMessage.",
+  "width": 1920,
+  "height": 1080,
+  "fps": 60,
+  "duration": 60,
+  "claim_status": "architecture_frozen_2026-09-30",
+  "chapters": [
+    {
+      "start": 0,
+      "end": 6.5,
+      "name": "Your dot. In iMessage."
+    },
+    {
+      "start": 6.5,
+      "end": 14,
+      "name": "Reuse the existing bridge"
+    },
+    {
+      "start": 14,
+      "end": 22,
+      "name": "Durable inbox"
+    },
+    {
+      "start": 22,
+      "end": 30,
+      "name": "Active dot task"
+    },
+    {
+      "start": 30,
+      "end": 38,
+      "name": "Reply through the outbox"
+    },
+    {
+      "start": 38,
+      "end": 46,
+      "name": "Local voice pipeline"
+    },
+    {
+      "start": 46,
+      "end": 53,
+      "name": "Know what is verified"
+    },
+    {
+      "start": 53,
+      "end": 60,
+      "name": "A familiar interface"
+    }
+  ],
+  "verification": {
+    "title": "A working bridge. Clear boundaries.",
+    "rows": [
+      [
+        "Initial text test",
+        "Inbound, reply + read receipt"
+      ],
+      [
+        "Local voice",
+        "Audio conversion + transcription"
+      ],
+      [
+        "Rich surfaces",
+        "Full phone checks still required"
+      ]
+    ],
+    "limitation": "Requires an active dot task and a running bridge"
+  }
+}

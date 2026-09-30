@@ -1,0 +1,76 @@
+1
+00:00:00,000 --> 00:00:03,000
+Your dot. In iMessage.
+
+2
+00:00:03,000 --> 00:00:06,500
+A familiar conversation.
+An active agent behind it.
+
+3
+00:00:06,500 --> 00:00:10,000
+iPhone → Photon Spectrum → existing runtime
+
+4
+00:00:10,000 --> 00:00:14,000
+Keep the transport.
+Connect it to the active task.
+
+5
+00:00:14,000 --> 00:00:18,000
+Save it before you process it.
+Persist. Batch. Claim.
+
+6
+00:00:18,000 --> 00:00:22,000
+A saved batch. A single owner.
+An expiring claim.
+
+7
+00:00:22,000 --> 00:00:26,000
+The active dot task reads the batch
+and authors the reply.
+
+8
+00:00:26,000 --> 00:00:30,000
+No separate model in the listener.
+No automatic platform wake.
+
+9
+00:00:30,000 --> 00:00:34,000
+Outbox → Photon → the same iMessage thread
+
+10
+00:00:34,000 --> 00:00:38,000
+Queued, provider accepted, and read receipt
+are distinct states.
+
+11
+00:00:38,000 --> 00:00:42,000
+The local Moonshine pipeline
+turns audio into text.
+
+12
+00:00:42,000 --> 00:00:46,000
+Local audio path verified.
+Phone-to-dot voice check still pending.
+
+13
+00:00:46,000 --> 00:00:49,500
+Initial text test: inbound, reply, read receipt.
+Local audio conversion and transcription verified.
+
+14
+00:00:49,500 --> 00:00:53,000
+Full phone checks are still required.
+Needs a running bridge and active dot task.
+
+15
+00:00:53,000 --> 00:00:57,000
+iMessage is the interface.
+dot stays the agent.
+
+16
+00:00:57,000 --> 00:01:00,000
+Photon carries the messages.
+dot authors the response.

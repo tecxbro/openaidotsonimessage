@@ -1,0 +1,64 @@
+{
+  "project": "Your dot. In iMessage.",
+  "generated_on": "2026-09-30",
+  "assets": [
+    {
+      "paths": [
+        "animation.py",
+        "project.json"
+      ],
+      "origin": "Original authored graphics and deterministic animation for this project",
+      "rights": "Project source supplied for editing and reuse; no third-party stock graphics or official brand-logo files used",
+      "notes": "Phone and abstract task marker are schematic illustrations; the example conversation is fictional."
+    },
+    {
+      "paths": [
+        "assets/fonts/OpenSans-Regular.ttf",
+        "assets/fonts/OpenSans-Light.ttf",
+        "assets/fonts/OpenSans-Semibold.ttf",
+        "assets/fonts/OpenSans-Bold.ttf"
+      ],
+      "origin": "Installed Open Sans font package",
+      "upstream": "https://www.opensans.com/",
+      "license": "Apache-2.0, per bundled Debian package notice",
+      "license_files": [
+        "assets/fonts/LICENSE.txt",
+        "assets/fonts/NOTICE.txt"
+      ],
+      "copyright": "Digitized data copyright (c) 2010\u20132011 Google Corporation"
+    }
+  ],
+  "audio": {
+    "included": false,
+    "notes": "Silent-first explainer. No stock music, cloned voice, or synthetic narration."
+  },
+  "tooling": {
+    "Python": "3.12",
+    "Pillow": "12.3.0",
+    "NumPy": "2.3.5",
+    "FFmpeg": "System-installed libx264 encoder; H.264/yuv420p; fast-start MP4",
+    "notes": "Tool binaries are not redistributed. Remotion documentation informed frame-driven timing principles; this project does not depend on or claim compatibility with Remotion."
+  },
+  "official_references": [
+    {
+      "title": "Remotion fundamentals",
+      "url": "https://www.remotion.dev/docs/the-fundamentals",
+      "used_for": "Deterministic frame-driven composition and frame-count conventions"
+    },
+    {
+      "title": "Remotion animating properties",
+      "url": "https://www.remotion.dev/docs/animating-properties",
+      "used_for": "Frame-derived interpolation and easing principles"
+    },
+    {
+      "title": "Remotion official agent skills",
+      "url": "https://www.remotion.dev/docs/ai/skills",
+      "used_for": "Reference on available official motion-tooling skills; no install script executed"
+    },
+    {
+      "title": "FFmpeg formats",
+      "url": "https://ffmpeg.org/ffmpeg-formats.html",
+      "used_for": "Rawvideo input and MP4 fast-start configuration"
+    }
+  ]
+}

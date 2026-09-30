@@ -1,0 +1,8 @@
+{
+  "decoded_frames": 3600,
+  "expected_frames": 3600,
+  "all_frames_decoded": true,
+  "minimum_spatial_std": 9.037630931698343,
+  "blank_frame_flags": [],
+  "decoder_errors": ""
+}

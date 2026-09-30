@@ -1,0 +1,43 @@
+{
+  "render": {
+    "file": "photon-dot-imessage-final.mp4",
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "duration_seconds": 60,
+    "frames": 3600,
+    "codec": "h264",
+    "pixel_format": "yuv420p",
+    "audio": "none; silent-first design"
+  },
+  "layout": {
+    "sampled_frames": 248,
+    "text_out_of_canvas": [],
+    "low_contrast_flags": [],
+    "deterministic_frame_1560": true
+  },
+  "full_decode": {
+    "decoded_frames": 3600,
+    "expected_frames": 3600,
+    "all_frames_decoded": true,
+    "minimum_spatial_std": 9.037630931698343,
+    "blank_frame_flags": [],
+    "decoder_errors": ""
+  },
+  "renderer_regression_tests": {
+    "default_stills_for_one_second": true,
+    "last_frame_near_duration_safe": true,
+    "overwrite_refused": true,
+    "invalid_fps_refused": true
+  },
+  "visual_inspection": {
+    "representative_full_resolution_frames": 10,
+    "transition_frames": 28,
+    "phone_size_checks": [
+      "intro",
+      "active task",
+      "evidence"
+    ],
+    "notes": "Inspected representative scene frames, first/last, transition contact sheet, and phone-size key scenes. Replaced unsupported arrow glyph and made first-frame title visible. Essential claims match the September 30 implementation freeze."
+  }
+}

@@ -1,0 +1,1511 @@
+{
+  "generated_utc": "2026-09-30",
+  "upstream_base": "8c710413c99a6fd8022727326ca682d267393953",
+  "files": [
+    {
+      "path": ".gitignore",
+      "bytes": 256,
+      "sha256": "a93274fb36e64ce04621f5ad7f11466106bef148c2ca4ef0386b5f06883b6938"
+    },
+    {
+      "path": "00-README.md",
+      "bytes": 7971,
+      "sha256": "44dc8e1255a2529768ac0e0dbe5495a9947bbe398e858602206f06c56e2c7904"
+    },
+    {
+      "path": "01-ARCHITECTURE.md",
+      "bytes": 4395,
+      "sha256": "9ee807c6c34e7b8baddd11f48d27783b36ad19a59f90060dc0914c8aeac31962"
+    },
+    {
+      "path": "02-SECRETS.md",
+      "bytes": 3252,
+      "sha256": "a16beb437400be8760db8d398be6e4c2afdb5f2f59d0f7e0b6d5e2f3ade8adbc"
+    },
+    {
+      "path": "03-WHAT-NOT-IN-SHARE.md",
+      "bytes": 4498,
+      "sha256": "6cd51a0dcb3c1a45ba427f4d7062b99195085d1a5cff28f776187fe4c1d66c0c"
+    },
+    {
+      "path": "MANIFEST.txt",
+      "bytes": 14161,
+      "sha256": "cc6120b4152a3cd1b8383f3d9cf0e7bbc3af40ac68de4dd2e9c832e942c11da8"
+    },
+    {
+      "path": "README-GROK-LEGACY.md",
+      "bytes": 8195,
+      "sha256": "d06e2966c44cf7b2925ee2f60ec7060381e66e6b119e079835e989ae804423e1"
+    },
+    {
+      "path": "README.md",
+      "bytes": 4369,
+      "sha256": "bee864049a1a4a3d365d6f9616ff73cea0ba26985b091e0905e1db81d870badb"
+    },
+    {
+      "path": "agents/README.md",
+      "bytes": 1651,
+      "sha256": "77f08a4498de0ab55a603543d9b39496fbeb92b5cdea778e1df2d37e53d71e86"
+    },
+    {
+      "path": "agents/app-sheet/PROFILE_TEMPLATE.md",
+      "bytes": 2097,
+      "sha256": "85e1d6b96329244f9e05140e05770627197d04a1c4fd16861b57e81f4b3ee74d"
+    },
+    {
+      "path": "agents/app-sheet/README.md",
+      "bytes": 843,
+      "sha256": "2280d26001723c5afa4cdcaf8b10964e442f9429432b5bd6a8e07216276a87d2"
+    },
+    {
+      "path": "agents/creator/PROFILE_TEMPLATE.md",
+      "bytes": 2090,
+      "sha256": "6eb9cc56b6943f614ba56027c8eb83259e8aad80b0c4e1931c8cb299f7a4a37b"
+    },
+    {
+      "path": "agents/creator/README.md",
+      "bytes": 833,
+      "sha256": "6b634ef22620eed8259ae676dfc503bb349b4fab87ab58487f98b3331580d719"
+    },
+    {
+      "path": "agents/feature-add/PROFILE_TEMPLATE.md",
+      "bytes": 2233,
+      "sha256": "ab857cf3371c0a5e21d93baa40b95bed987a0bec069e07c1b51965a92508eca8"
+    },
+    {
+      "path": "agents/feature-add/README.md",
+      "bytes": 835,
+      "sha256": "3f9be7e8a750a17714b4e38e52fa5305caf476760cdd5ff97eeda48febaf579f"
+    },
+    {
+      "path": "agents/front-door/PROFILE_TEMPLATE.md",
+      "bytes": 11270,
+      "sha256": "2443a2e6158f2339a7a97a3ca92541ebf0567c90e9542929f886e391a4672a4e"
+    },
+    {
+      "path": "agents/front-door/README.md",
+      "bytes": 3379,
+      "sha256": "6d73ce86760a332e0c95878f2ae9a43351fe9d2f9732e618c7e50115f318de5c"
+    },
+    {
+      "path": "agents/image-cards/PROFILE_TEMPLATE.md",
+      "bytes": 1290,
+      "sha256": "9c2149808b9c02c704fe16fc09a82e446c077e8e6f6290ab8874af4d71fdcd1c"
+    },
+    {
+      "path": "agents/image-cards/README.md",
+      "bytes": 885,
+      "sha256": "cb0258e1931fdec4835ec9913de1d3b6ceb7a8097acbd480b941dd2f5713a7b0"
+    },
+    {
+      "path": "agents/live-mini/PROFILE_TEMPLATE.md",
+      "bytes": 3424,
+      "sha256": "e4e44ad4c613361134675796eed785ac855d0b511edc68afc943eed8c5d7535f"
+    },
+    {
+      "path": "agents/live-mini/README.md",
+      "bytes": 2283,
+      "sha256": "ba035f260d19d20966d0725670d111858f8f054184433338d98bb480ef908ec8"
+    },
+    {
+      "path": "agents/master-orchestrator/PROFILE_TEMPLATE.md",
+      "bytes": 2779,
+      "sha256": "41d226f5eb0478b3658981b303acae51688648926662e28348bdd4bc2a467291"
+    },
+    {
+      "path": "agents/master-orchestrator/README.md",
+      "bytes": 879,
+      "sha256": "04648d0321cf8fd8de49a40cd42baa53b5274544c9f8573537281dea31a21482"
+    },
+    {
+      "path": "bridge/.env.example",
+      "bytes": 387,
+      "sha256": "65df33674d77a7b832e37287b01cb5a262e53396792880c0e7bee9efb2a07a2e"
+    },
+    {
+      "path": "bridge/.gitignore",
+      "bytes": 170,
+      "sha256": "4343f433fc680440739e59c0c18c60656127f4af1dae0c3dd11ee503689600bd"
+    },
+    {
+      "path": "bridge/PHASE1.md",
+      "bytes": 4464,
+      "sha256": "b79214f22a3c6f9a104dff9cadab8350bc04c12a4dae5b0919c492d0d8d52019"
+    },
+    {
+      "path": "bridge/README.md",
+      "bytes": 10799,
+      "sha256": "1615d0debb6088b9a6529e6b5dacd14d9e38c76c549a7207897e149e44ba129c"
+    },
+    {
+      "path": "bridge/bun.lock",
+      "bytes": 33793,
+      "sha256": "9324eccceafea1ecd7446f27217c57b3ff5ae006c68328fc4accd367a4349711"
+    },
+    {
+      "path": "bridge/bunfig.toml",
+      "bytes": 37,
+      "sha256": "4ca4040bb16ea08577a3a80a75769af868a2e64af131b0c9cf7767350e90a66b"
+    },
+    {
+      "path": "bridge/data/.gitkeep",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "bridge/orchestrator-memory/APPS.md",
+      "bytes": 4221,
+      "sha256": "0b8dbe5092a6db31c1440a76373616f65724cda12644b54464ab1d762d144539"
+    },
+    {
+      "path": "bridge/orchestrator-memory/ATTACHMENTS.md",
+      "bytes": 7737,
+      "sha256": "f83b942292f3f9aad9c6fc17d30d13c10895d3d26155c5dc0f1b6332af46d182"
+    },
+    {
+      "path": "bridge/orchestrator-memory/AUDIO.md",
+      "bytes": 2390,
+      "sha256": "d5e3d64ff4065275d753980537b308dbd90f5cd72cbb9191d345c8c119c285c3"
+    },
+    {
+      "path": "bridge/orchestrator-memory/CHAT_VS_TASK.md",
+      "bytes": 19236,
+      "sha256": "90cb9eeb6df8f6b4510c7aa46db441bf8783c6febb5ce9c3a92b2393b7bdddc5"
+    },
+    {
+      "path": "bridge/orchestrator-memory/CODING_AND_COMPUTER_ACCESS.md",
+      "bytes": 1172,
+      "sha256": "8875ce2de9ff05c6e1845002a461a8e181b775fa4e7d9c0f25e84794655cfad5"
+    },
+    {
+      "path": "bridge/orchestrator-memory/CONTEXT_LOADING.md",
+      "bytes": 4675,
+      "sha256": "d1bfd8b711e761fc4a5cfed95185517e55da4e16c6d0d72aafe18d1a38385f9f"
+    },
+    {
+      "path": "bridge/orchestrator-memory/POLLS.md",
+      "bytes": 2472,
+      "sha256": "9e7c5935ce8ace9b2eb7daa66121a5dee5562b6a1e78673f923ac2b37403d1e6"
+    },
+    {
+      "path": "bridge/orchestrator-memory/REACTIONS_EFFECTS.md",
+      "bytes": 11171,
+      "sha256": "9e00d2790b2ff85b0a5d62c4d17406cc53cb85b6c4de89081a5268fa8d3de67a"
+    },
+    {
+      "path": "bridge/orchestrator-memory/README.md",
+      "bytes": 736,
+      "sha256": "815df1d66fcca2a1eb99af7c49322259f0240121994cb52be3613fb60ca5a659"
+    },
+    {
+      "path": "bridge/orchestrator-memory/REPLY_MODALITY.md",
+      "bytes": 4801,
+      "sha256": "17b3e997f245d653c40ab62855889a71b7064c8b53860922d482d477c0037d98"
+    },
+    {
+      "path": "bridge/orchestrator-memory/SPECTRUM_PROJECT_SWITCH.md",
+      "bytes": 3488,
+      "sha256": "c1f8e9b6c7d7be05642465b5c683c3828be731533b05a6e1b5df4947f14dba38"
+    },
+    {
+      "path": "bridge/orchestrator-memory/bots/README.md",
+      "bytes": 801,
+      "sha256": "3370339915128b2106746edb672137b986c656dcc346c4d34fbe3546e6c195d7"
+    },
+    {
+      "path": "bridge/orchestrator-memory/bots/ROLE_APP_SHEET.md",
+      "bytes": 757,
+      "sha256": "4770a74e228233ce691cdc87025307f6f49cda834d84c6750b401e9dd015299d"
+    },
+    {
+      "path": "bridge/orchestrator-memory/bots/ROLE_CREATOR.md",
+      "bytes": 755,
+      "sha256": "dfa6054781635ff2a2c104c9e37832ac835a24503d16ec229a5a3488b5f155ea"
+    },
+    {
+      "path": "bridge/orchestrator-memory/bots/ROLE_FEATURE_ADD.md",
+      "bytes": 749,
+      "sha256": "7e5b6a3d34ac10a14e3dfc41ee376430e01371a280d001db4eae49777134c656"
+    },
+    {
+      "path": "bridge/orchestrator-memory/bots/ROLE_FRONT_DOOR.md",
+      "bytes": 759,
+      "sha256": "664e3530db7b7d14cfab582560994fc07e8201116f7dd7be3a72fe5dd7b30fbe"
+    },
+    {
+      "path": "bridge/orchestrator-memory/bots/ROLE_IMAGE_CARDS.md",
+      "bytes": 766,
+      "sha256": "7a61efe152668bf55a2fb10d9a86a553bef5636864b5f686009f93a9f1340f6d"
+    },
+    {
+      "path": "bridge/orchestrator-memory/bots/ROLE_ORCHESTRATOR.md",
+      "bytes": 758,
+      "sha256": "2e998df813e8d9f7a3d0f9ec80b478db8776d47f9d438ec66c52ff9c213eb6f5"
+    },
+    {
+      "path": "bridge/orchestrator-memory/bots/_TEMPLATE.md",
+      "bytes": 265,
+      "sha256": "44c5fb2b2b740995a01e2a7a0e2f48d31d7147382a98bf91c91765954622670e"
+    },
+    {
+      "path": "bridge/orchestrator-memory/memory.md",
+      "bytes": 3581,
+      "sha256": "8638d3757798205e2fa1915af3fdc82b7ea9e4789109fc8c17b0c2cd798728a0"
+    },
+    {
+      "path": "bridge/orchestrator-memory/sunset/log.md",
+      "bytes": 51,
+      "sha256": "f5b856c5c3e0e04584554401a04c80f3239e4aaf259f2e0ba6f5e3793fbb95cf"
+    },
+    {
+      "path": "bridge/orchestrator-memory/threads/.gitkeep",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "bridge/package.json",
+      "bytes": 762,
+      "sha256": "2a27f0017eb824eac37570534601c6f003c245fc76bc39aa8a42c73f262d4baf"
+    },
+    {
+      "path": "bridge/prompts/voice-policy.md",
+      "bytes": 3776,
+      "sha256": "85bf22312408c8d01c033f77e5c03fab68cc053bfc316741bd8a6b28ca40d943"
+    },
+    {
+      "path": "bridge/scripts/find-recent-msg.mjs",
+      "bytes": 685,
+      "sha256": "e2e7b1894498da4948f2a36a4ffefe118b747c71f029d28aefee274aae1e44b7"
+    },
+    {
+      "path": "bridge/scripts/fixture-reaction-option.mjs",
+      "bytes": 2482,
+      "sha256": "79043dd38ecca597fe178d40c9df0577ab0e87651c467d8a000f51232fb1e9e5"
+    },
+    {
+      "path": "bridge/scripts/start-runtime.sh",
+      "bytes": 486,
+      "sha256": "3c7b80e46ed906ded355d12d6ad7c8604ad6ded504623c17c653fd35453a64e5"
+    },
+    {
+      "path": "bridge/src/attachment-group.test.ts",
+      "bytes": 2347,
+      "sha256": "73c15bf8f4e81e00de048d33c96190270c12e33fb9ce656fd72051394e21decb"
+    },
+    {
+      "path": "bridge/src/batch-claim.test.ts",
+      "bytes": 2629,
+      "sha256": "9581be92a03612f3f2354f972759784851622f62146c87adc5177a8ea6166464"
+    },
+    {
+      "path": "bridge/src/batch-claim.ts",
+      "bytes": 7357,
+      "sha256": "e3140849e867bb39dc340f60dbc58f0201d65d4391af14d0de7e70c14cbf76b9"
+    },
+    {
+      "path": "bridge/src/cards-ready.test.ts",
+      "bytes": 6512,
+      "sha256": "cee7d548fb9727f4b0364fc242bdce5572bf8e5f77345eb7bf492d3531b0930f"
+    },
+    {
+      "path": "bridge/src/cards-ready.ts",
+      "bytes": 14075,
+      "sha256": "7e5fecf6c75c6e3fee92b0b30dcd50c7ab0b8b488252cb4b6a54aab4187329b9"
+    },
+    {
+      "path": "bridge/src/config.ts",
+      "bytes": 1452,
+      "sha256": "68a59b9f71acac4f11eed9d2f9cb8af5ec7cb70ef4cb52cf46f9f0c39adf6852"
+    },
+    {
+      "path": "bridge/src/dot-agent-reply.test.ts",
+      "bytes": 11407,
+      "sha256": "1a06a1d4f19a68f23ee80e45c2d4ba4c286faa9b562a5253bf68e5b21bde7832"
+    },
+    {
+      "path": "bridge/src/dot-agent.ts",
+      "bytes": 5459,
+      "sha256": "a080c5322e8e6cbf7204f9fbc04e659a518dc8f223f950c30597fea304836900"
+    },
+    {
+      "path": "bridge/src/dot-inbox.ts",
+      "bytes": 1391,
+      "sha256": "7bc1cf52a2e2b139a300fc10451caa0e0c920dd721d6952f5c6436dbaf2cfea9"
+    },
+    {
+      "path": "bridge/src/dot-runtime.test.ts",
+      "bytes": 27154,
+      "sha256": "47b6b8dd1d8e6767fd79bdefbee1957044a13bb051e5a53c56c86558d5730af5"
+    },
+    {
+      "path": "bridge/src/dot-wait.test.ts",
+      "bytes": 4946,
+      "sha256": "720a3daa66ae055efd550b914630663a09a7205c2e60fbfba48edac80311b02a"
+    },
+    {
+      "path": "bridge/src/dot-wait.ts",
+      "bytes": 3402,
+      "sha256": "db2459251df2a45a8bea5837b324c9deac1e7fee7d1744088eb76219c46f7a52"
+    },
+    {
+      "path": "bridge/src/enqueue.ts",
+      "bytes": 9401,
+      "sha256": "5cdd88da03e3ee9bef2b1b27aa001557f82d922a201861ea0faa477e59fae2b4"
+    },
+    {
+      "path": "bridge/src/file-lock.test.ts",
+      "bytes": 4545,
+      "sha256": "f877c8f0b70e3105d7e3f757e11c0de12d4ca1af94ea4a55d014cc93cae6bc58"
+    },
+    {
+      "path": "bridge/src/file-lock.ts",
+      "bytes": 2338,
+      "sha256": "b50666c9cc770acf432b14ce52e6feae25c82916d551c225dd9b1a0441211c28"
+    },
+    {
+      "path": "bridge/src/greeting.test.ts",
+      "bytes": 2176,
+      "sha256": "07be57ed8c57e998b507f974f5cf33d2198a39d35937e5a1630b4423236d47bf"
+    },
+    {
+      "path": "bridge/src/greeting.ts",
+      "bytes": 3292,
+      "sha256": "1b9aa9efbfbacb455bfd0c0fc17d0a22116a31589efeba5be04ab961a65a1e00"
+    },
+    {
+      "path": "bridge/src/inbound-attachment.test.ts",
+      "bytes": 3544,
+      "sha256": "189d706b15212d4a1168aaf3ea6a10adc8b5cb5eac38d3b4bb55a24972b2e23b"
+    },
+    {
+      "path": "bridge/src/inbound-attachment.ts",
+      "bytes": 6613,
+      "sha256": "8b78d8d8b24a6fd79dae3522f8f621dd874f67eafb7d1ddc77848d7926e15b60"
+    },
+    {
+      "path": "bridge/src/inbound.test.ts",
+      "bytes": 10067,
+      "sha256": "6359ee3d4453d2b7bf2173510c6e2a06c0413d3e2988c59905e32191e54e95f3"
+    },
+    {
+      "path": "bridge/src/inbound.ts",
+      "bytes": 9099,
+      "sha256": "6f8dd9857e1cab3939b0c08ea3efaf94cc606648f3e7d6489fb3a59bf7a1bfe9"
+    },
+    {
+      "path": "bridge/src/index.ts",
+      "bytes": 529,
+      "sha256": "ada2da32c1e12e3a3e42777322df283b57a3be5a5b1de04df4974e2e1b94b54f"
+    },
+    {
+      "path": "bridge/src/media-jobs.ts",
+      "bytes": 1165,
+      "sha256": "4ccf5f9102fdadff1f9964e03e49fe267078435e767f642d25c50b6a370a29fa"
+    },
+    {
+      "path": "bridge/src/outbound-app.test.ts",
+      "bytes": 1522,
+      "sha256": "be7198e2e0e17c2f57a5b2392a2057b01029662b1a66fb36464aa69fae140311"
+    },
+    {
+      "path": "bridge/src/outbound-app.ts",
+      "bytes": 1069,
+      "sha256": "c136033711e81308388334d95ca090fa5da64794e5d661ee2099c44dd1ae602b"
+    },
+    {
+      "path": "bridge/src/outbound-effect.test.ts",
+      "bytes": 3871,
+      "sha256": "8d89f42203573a5a92214a124362ae57dbcc6dc9d61d1b781e02dc6688052065"
+    },
+    {
+      "path": "bridge/src/outbound-effect.ts",
+      "bytes": 1365,
+      "sha256": "9a3029a8cca7a2b3ae5e76c3830e9b0f219353f129e72cfb12775b0111763657"
+    },
+    {
+      "path": "bridge/src/outbound-jpeg.ts",
+      "bytes": 3740,
+      "sha256": "69a2c6cd198c4cbba3826c5acfc22323a44bdb27ff22e9069e9f4a7e1019f7db"
+    },
+    {
+      "path": "bridge/src/outbound-poll.test.ts",
+      "bytes": 1174,
+      "sha256": "20983736bb145087fad27c9e66b8eaac79c236fd82dd9ae3cabe375fb2f66eff"
+    },
+    {
+      "path": "bridge/src/outbound-poll.ts",
+      "bytes": 1034,
+      "sha256": "60b669851d8122f699a29680b146a38339c285a8e44273ab43f8fb0d62c13097"
+    },
+    {
+      "path": "bridge/src/outbound-text.test.ts",
+      "bytes": 4893,
+      "sha256": "dac60305ef6c268c1669c911002b8634cad3fe957cdf2fcb5225cef5748f7de3"
+    },
+    {
+      "path": "bridge/src/outbound-text.ts",
+      "bytes": 3372,
+      "sha256": "b61aa924abde351bc218ec7502c289b3fc96148f8bc971d6a517375eb0f97677"
+    },
+    {
+      "path": "bridge/src/preflight.ts",
+      "bytes": 2504,
+      "sha256": "d127d57d8b2aeb78687192095671dc6e5f371dcd0781839d5f02f16c443a0560"
+    },
+    {
+      "path": "bridge/src/reaction-option.test.ts",
+      "bytes": 13483,
+      "sha256": "7508f3a67721cfb7b0a22b82a02a926e49c7634f06f4fcc8bc416649759491cf"
+    },
+    {
+      "path": "bridge/src/reaction-option.ts",
+      "bytes": 13393,
+      "sha256": "3715c4519885c4e34cfb6c676cad1b21e6151304b8aba76668a8e42cd3aac9fb"
+    },
+    {
+      "path": "bridge/src/read-batch.ts",
+      "bytes": 320,
+      "sha256": "1232a139049ea2eec21afe169ab3222710cd1a13ae45b493374bc16c234e72d5"
+    },
+    {
+      "path": "bridge/src/recovery.ts",
+      "bytes": 1555,
+      "sha256": "37a5ce9582c34aeaf3ae2f175456b295285ac1d2cbd15657490ac35b10a46c8d"
+    },
+    {
+      "path": "bridge/src/reply-fallback.test.ts",
+      "bytes": 2320,
+      "sha256": "4a7da993075d1d9036284b48173c92f8bbf4fb2bac5444755495b19f0a9ebae7"
+    },
+    {
+      "path": "bridge/src/reply-fallback.ts",
+      "bytes": 1939,
+      "sha256": "1bc74341dcf15631298ae8ecceb755c51489deb0747df8848a74771ad412a444"
+    },
+    {
+      "path": "bridge/src/runtime.ts",
+      "bytes": 37483,
+      "sha256": "19382fb1f290649784b65c6fdabe7a6e4de08e4f24736c32b1f1b12ab5fc34dc"
+    },
+    {
+      "path": "bridge/src/send-hello.ts",
+      "bytes": 781,
+      "sha256": "89d60690dae82c0085bd7d34c6cdb314a6f66247491626fed8bddaa554cb685c"
+    },
+    {
+      "path": "bridge/src/setup-confetti.test.ts",
+      "bytes": 1372,
+      "sha256": "143ce7909b4395882b8c309e0e37574e6a6b93109ce3cd8ddab590693d854090"
+    },
+    {
+      "path": "bridge/src/setup-confetti.ts",
+      "bytes": 1810,
+      "sha256": "a49dc2e3f2feaeb024af6a5849a40280383216f9cb586a8c7f8e869188e27b2e"
+    },
+    {
+      "path": "bridge/src/start-dot.ts",
+      "bytes": 2137,
+      "sha256": "51e7c59c33a8ac34a55cd5bcba7d8afe5b978af795afe72c39aee2af4e56e2de"
+    },
+    {
+      "path": "bridge/src/storage.ts",
+      "bytes": 18750,
+      "sha256": "cba11b44d3348e7d804d7d0417cf7c1f1bab1c78948f179b25732779aac5734d"
+    },
+    {
+      "path": "bridge/src/types.ts",
+      "bytes": 8589,
+      "sha256": "223e69f21008281ffbc3a3f2524bc4144206bae594bff2279b1f00991bc2fb3a"
+    },
+    {
+      "path": "bridge/src/voice-stt.test.ts",
+      "bytes": 2529,
+      "sha256": "5fd328ef89a99dbe36474820c5a2d2f0b97564d50b8597582f0a9a301ca90272"
+    },
+    {
+      "path": "bridge/src/voice-stt.ts",
+      "bytes": 5564,
+      "sha256": "9801bf01e5e68a33c685e7f4d6241a84ca32e148c00dbf9fc3ab58d657cf47f6"
+    },
+    {
+      "path": "bridge/test/setup.ts",
+      "bytes": 460,
+      "sha256": "ef13e63974258eebe04d7d1de0c23f3b6412e55e42da6b993eee6ac2c5c4d855"
+    },
+    {
+      "path": "bridge/tools/moonshine-transcribe.py",
+      "bytes": 553,
+      "sha256": "38fc07feec5bf76ea9765b6d6e64ddce4b6887cac928aa0486a15a9ca2d61aa8"
+    },
+    {
+      "path": "bridge/tools/moonshine_stt.py",
+      "bytes": 4482,
+      "sha256": "d421ad2822c4a480839a75e53cf270e57662566d7062a6bf6d52f1e13f86a9e4"
+    },
+    {
+      "path": "bridge/tsconfig.json",
+      "bytes": 518,
+      "sha256": "d595d834ed19c0d8f9cbcf582f5471fabf4c7ad14ac324d5591144389cf83c8e"
+    },
+    {
+      "path": "docs/BUILD_VERIFICATION.md",
+      "bytes": 13356,
+      "sha256": "a70093013921cd3a2108bdbb9defa7821d58c493272e25c559bc0ea5fd0c071e"
+    },
+    {
+      "path": "docs/DOT_ROLES.md",
+      "bytes": 5115,
+      "sha256": "0a837b9fd1444c4c53002f13917a31c1f41621baabad79b3cbcab40d97c21cc4"
+    },
+    {
+      "path": "docs/DOT_RUNTIME.md",
+      "bytes": 30845,
+      "sha256": "ec976f02767e73737371f9eaef0fb834eb0e8537fcd66e867015e577b1e4fdba"
+    },
+    {
+      "path": "docs/ISSUES_AND_FIXES.md",
+      "bytes": 13845,
+      "sha256": "9a6a7f16227e2178a36db5f89bdebd8665e68957aa4b950ceac0c19ba8c693dd"
+    },
+    {
+      "path": "docs/PUBLICATION.md",
+      "bytes": 5957,
+      "sha256": "42e7b5d978a709b6f1feb14d4e88e15d8a3c727814d51b2248a0efbd7c2282a4"
+    },
+    {
+      "path": "extras/article/README.md",
+      "bytes": 645,
+      "sha256": "1cab0b99f57aaa86959a2de0b90a322a9b853746fa5dede9fd2dbfc2f9a48e93"
+    },
+    {
+      "path": "extras/article/build_docx.py",
+      "bytes": 3304,
+      "sha256": "d6b77bd8f777f66c5b8548ea058835eb180748c2b8964a22adff42b3b2555245"
+    },
+    {
+      "path": "extras/article/dot-imessage-architecture.docx",
+      "bytes": 41435,
+      "sha256": "61dfccd8e7cdeb6e60a6379f4486f289bce88a2f6c41174f25962fdb6e7a5bd6"
+    },
+    {
+      "path": "extras/article/dot-imessage-architecture.md",
+      "bytes": 8830,
+      "sha256": "41b27a44c569f0dd8763fe934c5c3f9df19d6474baeaa5c393f19e8d018e491a"
+    },
+    {
+      "path": "extras/article/dot-imessage-architecture.pdf",
+      "bytes": 65367,
+      "sha256": "791e82892dac96e519a359c09f08638df460748b191772cfd9b18c4c709c65b2"
+    },
+    {
+      "path": "extras/article/dot-imessage-architecture.txt",
+      "bytes": 8796,
+      "sha256": "b43ade37d1beae0d4fe8b7de0206f2ba7be8e7cbc73e2d83dcf81e153f4b4e30"
+    },
+    {
+      "path": "extras/video/QUALITY-REPORT.json",
+      "bytes": 1251,
+      "sha256": "a2271853c8f3b365f8c93d1802d9f82d62edd4a90a885c60c8c2ed4ca034b959"
+    },
+    {
+      "path": "extras/video/RENDER.md",
+      "bytes": 1975,
+      "sha256": "c48a8d4123272b3f4d797b0b56ec9317be8500416f504d72e974218866ee8e0d"
+    },
+    {
+      "path": "extras/video/animation.py",
+      "bytes": 15579,
+      "sha256": "2f9278a9f603c6a3ebc7d3783698bc9c5f35da918d12a7d4f654c452286d7549"
+    },
+    {
+      "path": "extras/video/assets-and-licenses.json",
+      "bytes": 2392,
+      "sha256": "20c5904e50101303f145c89b433e5a1cbc990cf4962de28538db61eb95c412cb"
+    },
+    {
+      "path": "extras/video/assets/fonts/LICENSE.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "extras/video/assets/fonts/NOTICE.txt",
+      "bytes": 1031,
+      "sha256": "94d4b78643f99d7cfa872145b38da578299f401405ca5cba66a5c95bf13933b0"
+    },
+    {
+      "path": "extras/video/assets/fonts/OpenSans-Bold.ttf",
+      "bytes": 224592,
+      "sha256": "5894a3649b213cf5b2d673b6e7a871815fd1d120fa68a463592f27db14eae323"
+    },
+    {
+      "path": "extras/video/assets/fonts/OpenSans-Light.ttf",
+      "bytes": 222412,
+      "sha256": "cf5f5184c1441a1660aa52526328e9d5c2793e77b6d8d3a3ad654bdb07ab8424"
+    },
+    {
+      "path": "extras/video/assets/fonts/OpenSans-Regular.ttf",
+      "bytes": 217360,
+      "sha256": "e64e508b2aa2880f907e470c4550980ec4c0694d103a43f36150ac3f93189bee"
+    },
+    {
+      "path": "extras/video/assets/fonts/OpenSans-Semibold.ttf",
+      "bytes": 221328,
+      "sha256": "aa3b0ef53db12e3d45094030cac0e69d384e44cc5978643dd4390041cad546e2"
+    },
+    {
+      "path": "extras/video/captions.srt",
+      "bytes": 1450,
+      "sha256": "4a4af824eafeeb97453ddd6bcf9b2d5712085350093955a678934bd0c9f308f4"
+    },
+    {
+      "path": "extras/video/photon-dot-imessage-final.mp4",
+      "bytes": 3765150,
+      "sha256": "be4703854b956b4a8b25c2f9e183da128275fea49455db09f8ce0283c6b89b49"
+    },
+    {
+      "path": "extras/video/poster.png",
+      "bytes": 153976,
+      "sha256": "d3231e26efdc8d49874f59d12cc78d58b4e0c8e12cc3887bb3a073cb586d2ad7"
+    },
+    {
+      "path": "extras/video/project.json",
+      "bytes": 1287,
+      "sha256": "045d6958832ef029ce86894f77af7f5bf9f2e0ff28b45d7cac2122ef185222da"
+    },
+    {
+      "path": "extras/video/qa-decode.json",
+      "bytes": 181,
+      "sha256": "6a5544c24e18dab83fbdd5b334d896326358eaa1b48c61055186ad100e954e60"
+    },
+    {
+      "path": "extras/video/qa-layout.json",
+      "bytes": 120,
+      "sha256": "5aa41a297dda945d6558bd3a194064c815fc8bfbadef34535a66e4062fc6c870"
+    },
+    {
+      "path": "extras/video/requirements.txt",
+      "bytes": 30,
+      "sha256": "c07ff256a990ca5cecef380d906f1f066aca761a5095f2c664e3fad3b40d4949"
+    },
+    {
+      "path": "extras/video/storyboard-and-caption-script.md",
+      "bytes": 3642,
+      "sha256": "d238ee9240e546a2c5b938c7aeb7eff5f968b01f25093a4ff1544908a4e36bed"
+    },
+    {
+      "path": "extras/video/storyboard-preview.jpg",
+      "bytes": 552136,
+      "sha256": "e29fc5c3a375bb67891311f0ada7d79cf761e1ecff00fbcdc6b2fa6b57290ecb"
+    },
+    {
+      "path": "extras/video/technical-motion-explainer/SKILL.md",
+      "bytes": 3869,
+      "sha256": "c8b41e3ac99dd01b2f1375a0c40af0bc663979ad079d5462336c8bda40ab1cac"
+    },
+    {
+      "path": "extras/video/technical-motion-explainer/agents/openai.yaml",
+      "bytes": 272,
+      "sha256": "d3815b580c4f14009f567289079b3e5c32b0d6c0c7905ca82834f48b1f1e2de3"
+    },
+    {
+      "path": "extras/video/technical-motion-explainer/references/rendering-and-qa.md",
+      "bytes": 2344,
+      "sha256": "afda166ced433874f582ff965dcacdd6339ce29c0c7c1625d04d18b64318f0f1"
+    },
+    {
+      "path": "extras/video/technical-motion-explainer/scripts/render_motion.py",
+      "bytes": 6225,
+      "sha256": "2b18135472c764b1880a0a66717d9f8537435debdc0899b91997d76c8b0885ae"
+    },
+    {
+      "path": "live-mini/ARCHITECTURE.md",
+      "bytes": 6701,
+      "sha256": "489125080193a932b3276aafe7bb6fabb45d5962e159adf2a58d405394f95600"
+    },
+    {
+      "path": "live-mini/README.md",
+      "bytes": 4666,
+      "sha256": "bedc09e5002b72eaa5e6b3bf805d04e2f76148863a4f00e817c29230b68fcaeb"
+    },
+    {
+      "path": "live-mini/live-task-cards-handoff.tar.gz.sha256",
+      "bytes": 97,
+      "sha256": "b9142a1f39ef999b06c29b543d9c4b228e60c6273ada5fc2dba016a6d5aec361"
+    },
+    {
+      "path": "live-mini/live-task-cards/.env.example",
+      "bytes": 733,
+      "sha256": "8f8e45577e12a5c6d57b3a5d3e4cc44daf37367c5f6b29880915c75347a49a21"
+    },
+    {
+      "path": "live-mini/live-task-cards/.gitignore",
+      "bytes": 81,
+      "sha256": "fc0b8b990d330b62a08ca7bc49e7cd2805ad0b1a92dda81da2518aa0f9da5d18"
+    },
+    {
+      "path": "live-mini/live-task-cards/DESIGN.md",
+      "bytes": 8641,
+      "sha256": "b9b39ca5adfa53edf6bb72be581118490cb39c1b94b5dab0dc10a1aacc790370"
+    },
+    {
+      "path": "live-mini/live-task-cards/HANDOFF.md",
+      "bytes": 8156,
+      "sha256": "ad4e0b43bfe9f6f40e56b9fa2b63c321faa2f816e3655d4e7cb048f38d9e34bf"
+    },
+    {
+      "path": "live-mini/live-task-cards/INSTALL.md",
+      "bytes": 8250,
+      "sha256": "a77860351212ff7a5ab14a9246e7868a8ade37898cfd663740f531cfbdbce561"
+    },
+    {
+      "path": "live-mini/live-task-cards/MANIFEST.sha256.json",
+      "bytes": 10706,
+      "sha256": "e4e60e57dd47f8926c5fc2ee89224b73939103d16d24f9a2114ebf2e05051739"
+    },
+    {
+      "path": "live-mini/live-task-cards/README.md",
+      "bytes": 8553,
+      "sha256": "315d796511c00e5390805f56775f44ffb6de621e4fd485d15e7343feebef6390"
+    },
+    {
+      "path": "live-mini/live-task-cards/SKILL.md",
+      "bytes": 14731,
+      "sha256": "3fa1ba2063c4e96c30623f411d0b97ba504a1dfba64dce6ac9e84d9ea565a0a8"
+    },
+    {
+      "path": "live-mini/live-task-cards/bin/live-card.mjs",
+      "bytes": 2229,
+      "sha256": "ff63b970a74ab3ed9677c5bf8fe963f654efeda17c2031df35db5d31f308bdc0"
+    },
+    {
+      "path": "live-mini/live-task-cards/docs/API.md",
+      "bytes": 12489,
+      "sha256": "163c28da5fb385509444ff8045d4d5440d592fa163092fd3bee1aa9fdde73251"
+    },
+    {
+      "path": "live-mini/live-task-cards/docs/CUSTOM_LOADERS.md",
+      "bytes": 9249,
+      "sha256": "474a27c10165714144d161046c259a9c7be2cc72a52482c3070101202df5e6ae"
+    },
+    {
+      "path": "live-mini/live-task-cards/docs/ICONS.md",
+      "bytes": 2103,
+      "sha256": "002f4a2bdd0022122b95b91a343666beb547944695cefe0a3e9fe08026e876c6"
+    },
+    {
+      "path": "live-mini/live-task-cards/docs/INTEGRATION.md",
+      "bytes": 5402,
+      "sha256": "fddf3086067f17ef509a365eb3130fc5355f05b6224a63b7c00887914451f470"
+    },
+    {
+      "path": "live-mini/live-task-cards/docs/SECURITY.md",
+      "bytes": 3657,
+      "sha256": "7b980139dbad34ebd29e7a99e05b4b7c5b7ef16c848c7174fbb6632603eb0fe7"
+    },
+    {
+      "path": "live-mini/live-task-cards/docs/SOURCES.md",
+      "bytes": 3791,
+      "sha256": "e7801bc103303974895c9f63ffb3d6b60a00c5a754f90d088addecb58523c79f"
+    },
+    {
+      "path": "live-mini/live-task-cards/evidence/HANDOFF_READINESS.md",
+      "bytes": 4954,
+      "sha256": "e83e494735cb649cfc5223a2cdb05e49331f434442b92e47e3e043f9bcc98a62"
+    },
+    {
+      "path": "live-mini/live-task-cards/evidence/TEST_REPORT.md",
+      "bytes": 8903,
+      "sha256": "f567e4474b370b72ea2e21f65222eaae674a477e5a885b10d09ae244d740a915"
+    },
+    {
+      "path": "live-mini/live-task-cards/evidence/build.txt",
+      "bytes": 137,
+      "sha256": "ee2b7be79203736582b71a93a2ed1d3975629628bad9db39f8c9a3e144586043"
+    },
+    {
+      "path": "live-mini/live-task-cards/evidence/clean-install.txt",
+      "bytes": 10748,
+      "sha256": "c1229853c853871c5017473609ab6464384417600ac4f9a466e87222bc732e58"
+    },
+    {
+      "path": "live-mini/live-task-cards/evidence/syntax-check.txt",
+      "bytes": 139,
+      "sha256": "d353fc7f4089eb0542df0fa0d9792d198fe8d530543130d4f7523e877096d6bf"
+    },
+    {
+      "path": "live-mini/live-task-cards/evidence/unit-tests.tap",
+      "bytes": 9164,
+      "sha256": "fb3cc81d2cee8331ff97f8ce910ff14e339fe94bc627028214614f76b2fdca99"
+    },
+    {
+      "path": "live-mini/live-task-cards/examples/checks.json",
+      "bytes": 778,
+      "sha256": "331fe7805ec70b11b50221c10c1e2f657409c95a500471d1a9ee01854d441557"
+    },
+    {
+      "path": "live-mini/live-task-cards/examples/complete-research.json",
+      "bytes": 864,
+      "sha256": "42dff3bd68fd8ac4cedeb29d11d6d09a40e4fabdd51fee94039b28932663244f"
+    },
+    {
+      "path": "live-mini/live-task-cards/examples/existing-runtime.mjs",
+      "bytes": 1681,
+      "sha256": "5342e30977dfd41f24cd2532847920c795d91e4a02a1a4f1201d0247cc3f8b59"
+    },
+    {
+      "path": "live-mini/live-task-cards/examples/loader-animation.json",
+      "bytes": 9031,
+      "sha256": "34b21074a17174f29f9f1d0011223c1c1176d9b12cf4432c216931e7ffe0a49c"
+    },
+    {
+      "path": "live-mini/live-task-cards/examples/loader-static.json",
+      "bytes": 420,
+      "sha256": "d66e0c0946c5eb5e3a9b7b82ddb195c36b49b957b0575d2a04f7008927d1ef9b"
+    },
+    {
+      "path": "live-mini/live-task-cards/examples/matrix.json",
+      "bytes": 2119,
+      "sha256": "938ca0ff31bb8d9ad1d6863a41cae0e86ad5e3ba140a055c27aec0a7757ebe73"
+    },
+    {
+      "path": "live-mini/live-task-cards/examples/research.json",
+      "bytes": 764,
+      "sha256": "9aeaef345b4d79b77d1c987ab76efbdaa1ebed39b17739174301bc7491786ff6"
+    },
+    {
+      "path": "live-mini/live-task-cards/examples/stages.json",
+      "bytes": 699,
+      "sha256": "36bb6277d81c5fec7a7d6613067d2160c3bc75d3b8742d421d59133992817d86"
+    },
+    {
+      "path": "live-mini/live-task-cards/examples/update-research.json",
+      "bytes": 863,
+      "sha256": "60589b888f151309d8499b92edec1bd86fe0acec0deb37623e31a44123f6829a"
+    },
+    {
+      "path": "live-mini/live-task-cards/grokbot-matrix/dot-matrix.js",
+      "bytes": 1696,
+      "sha256": "dc47f36a81658c448870f647cb8723a2deaceaffe1722b82b10391fbdd497f49"
+    },
+    {
+      "path": "live-mini/live-task-cards/grokbot-matrix/mini-card.css",
+      "bytes": 4743,
+      "sha256": "19a438d582a4465704bef2b936784cb734e99201e16642af3ed64ef04997ecb2"
+    },
+    {
+      "path": "live-mini/live-task-cards/grokbot-matrix/mini-card.js",
+      "bytes": 13544,
+      "sha256": "847f56bf21744837838ada86ab022909b5c1b59245f7aec996bb816463b3692c"
+    },
+    {
+      "path": "live-mini/live-task-cards/grokbot-matrix/mini-core.js",
+      "bytes": 4807,
+      "sha256": "265d24092161d31e8046689fa9f36dbbe58679b0e04865ad90ff63b64ed46b97"
+    },
+    {
+      "path": "live-mini/live-task-cards/grokbot-matrix/square-animation.js",
+      "bytes": 102910,
+      "sha256": "1a84ddb9935ef3375e7d743208537fb3845c404dea61d2f984f81247c4f38cac"
+    },
+    {
+      "path": "live-mini/live-task-cards/index.mjs",
+      "bytes": 715,
+      "sha256": "ec3f4f42851d8e75df51fdcbabe0110928eb263273890ffdf7c8c75b8b2b2286"
+    },
+    {
+      "path": "live-mini/live-task-cards/package-lock.json",
+      "bytes": 260,
+      "sha256": "9fed5139cf6f7dc6caf4fbee0c92f7b5c6161b0c9819fe1b6f556fe69c9126dc"
+    },
+    {
+      "path": "live-mini/live-task-cards/package.json",
+      "bytes": 722,
+      "sha256": "235acc99f2b6d5c35c58a4637b55c1fbae05c7196cb644e2121eb9adc35060bf"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/assets/hands.png",
+      "bytes": 237469,
+      "sha256": "6b010993ea073d6f9a9b28876be91aeb269379dc004ceb830376d709f762cd67"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/assets/study.png",
+      "bytes": 2240148,
+      "sha256": "2e0355dc598e5a4da095555f4e7228b2446f1ea682b13887af23c91b85236405"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/card-client.mjs",
+      "bytes": 2232,
+      "sha256": "feaea42fd9f3ad8774bef9e816e0bbcb208d5e444bba6efa8050c58418794988"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/card-motion.mjs",
+      "bytes": 6603,
+      "sha256": "2bccb15f0e6b056d8c57fd2fa7d71659bcb0b0127419f23c7e27b6165cb82c81"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/card-template.mjs",
+      "bytes": 7007,
+      "sha256": "05e0c2cf16fb09fd9f986215702ad6f39104b5867569d0b5038474277b8456b8"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/card-theme.mjs",
+      "bytes": 1034,
+      "sha256": "c2b257c5638fb940d12d1b28f27a2c5b8b49fb364bb3321a06eb2724d1a541e5"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/card.css",
+      "bytes": 11786,
+      "sha256": "1ace8ddf181cefecb52cdb6e909c904345c3686cbb6b94b4ba6012340fe482d5"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/demo-entry.mjs",
+      "bytes": 1486,
+      "sha256": "d10a7641d888f4d0de3d84199a143df643e6a3e5021a4da8d670e21a50f6950e"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/demo-playback.mjs",
+      "bytes": 3185,
+      "sha256": "c7d6b748765c908ffed46dbd50a75dd280c7b4b9c49e24780f1ef65473e0a550"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/demo-variants-playback.mjs",
+      "bytes": 2184,
+      "sha256": "9c0e351f3ee0c44d575c31c790d55736f1c1475db4f0316f04d4d17cc0834650"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/dot-progress.mjs",
+      "bytes": 1606,
+      "sha256": "d4510e40900dff1dc375bdd49bc78b204aeea7c35df85cdbb4515d098e6263e6"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/gallery.css",
+      "bytes": 599,
+      "sha256": "17208c67c6c0faf2638799dc1bddf7b9211be9622a8ba043969895372e30b6c3"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/loader-animation.mjs",
+      "bytes": 692,
+      "sha256": "57f6ec2732d4eed9cb150cf99c2693a6b2493e03f0f4a47f4e756c939cab9f31"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/matrix-demo-playback.mjs",
+      "bytes": 2363,
+      "sha256": "2a7cac7090dbc04b21b24b809028fa6cc54ac2468c09f2ae16bebd70b631dbc2"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/matrix-live.mjs",
+      "bytes": 4126,
+      "sha256": "52fe9c91367eb1f3ae5a915590f7ea7cf1a02046f43b8e34ae65661aabad8be3"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/matrix-presentation.mjs",
+      "bytes": 1201,
+      "sha256": "02ae35e25cac822abb48aa5ea9ae296f6e54cc7a8534e4429058a0c6c4c58f57"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/task-matrix.css",
+      "bytes": 6339,
+      "sha256": "f8cc4dd18749d650d4803fd69e6ac9cd66267ae5d0c2a53b5812749c7114cc4b"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/task-matrix.mjs",
+      "bytes": 7248,
+      "sha256": "90a39889804969d9e825146bef0d75b68ce68616e4a8e34145a955f285485889"
+    },
+    {
+      "path": "live-mini/live-task-cards/public/workflow-progress.mjs",
+      "bytes": 1298,
+      "sha256": "73d97600ffbc2c45535efb53a0decc8945113655d2b4ac6b328687f1fd98b314"
+    },
+    {
+      "path": "live-mini/live-task-cards/references/01-dot-grid.png",
+      "bytes": 1848169,
+      "sha256": "b6f66020ece15d2efb07ea633e12438fe71ef9b460331cb43efe4a3aecbba8c3"
+    },
+    {
+      "path": "live-mini/live-task-cards/references/02-segments.png",
+      "bytes": 1890726,
+      "sha256": "86dee4210d8166939cb95eb90071c5ed4dc584d17cf87ad23a8e5afa64ab5a3a"
+    },
+    {
+      "path": "live-mini/live-task-cards/references/03-stages.png",
+      "bytes": 1962673,
+      "sha256": "92512c59e9961aea1d2a70b04b218076097799f0b5efd030d8ff33bca1ff56ad"
+    },
+    {
+      "path": "live-mini/live-task-cards/scripts/build.mjs",
+      "bytes": 2643,
+      "sha256": "4f87e2e0bf39222d3d94c96a6a885379cc5a664edbe125c1e507ff2852b57cc2"
+    },
+    {
+      "path": "live-mini/live-task-cards/scripts/check.mjs",
+      "bytes": 1381,
+      "sha256": "01c60cd4edff0663cfea04fd574669156ccfc686c012b77b3cf3309ad6e62aa5"
+    },
+    {
+      "path": "live-mini/live-task-cards/scripts/init.mjs",
+      "bytes": 684,
+      "sha256": "fe0834f624d3c4cdad10fc6df43107b1d253c8e86aa8d91748610d2f24a8c71e"
+    },
+    {
+      "path": "live-mini/live-task-cards/scripts/package-handoff.mjs",
+      "bytes": 3189,
+      "sha256": "2ad3cb4a52b74ec3e338f1617655b082479bcb9b6d06f0067c17421a560bfc8e"
+    },
+    {
+      "path": "live-mini/live-task-cards/scripts/prepare-loader.mjs",
+      "bytes": 717,
+      "sha256": "b38cc0be146c606551eb252ba06cfd6da38cafa1b0c6c6f12d708f3ccd11e2fc"
+    },
+    {
+      "path": "live-mini/live-task-cards/scripts/preview.mjs",
+      "bytes": 531,
+      "sha256": "3af818cd15b69c554eaf399779d5a03165799196b7c94129a912faaa3b48a7c7"
+    },
+    {
+      "path": "live-mini/live-task-cards/scripts/verify-handoff.mjs",
+      "bytes": 731,
+      "sha256": "60e93679927b4d252878c0522c7501f7531ab27edf7e01b767382cab28e367a2"
+    },
+    {
+      "path": "live-mini/live-task-cards/server.mjs",
+      "bytes": 757,
+      "sha256": "d1a829daaa75df4a05e2f15fc59feadc556757d72599ca1d086690ac8e7822fa"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/SKILL.md",
+      "bytes": 5520,
+      "sha256": "fed7113aa4c24f30ecef9f0455d47f45cd01faeaffddcde415338bfc333d89b1"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/agents/openai.yaml",
+      "bytes": 261,
+      "sha256": "fa3d160bde19cfce4f498033288ec96e78179f4d36d49913f9cb7d41b83e3f38"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/assets/starter/compare.html",
+      "bytes": 2417,
+      "sha256": "f981c57b329285dc73a6d4efd23156527471c2fb82a61dd79dfe21e450a6a273"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/assets/starter/dev/tap-core.test.mjs",
+      "bytes": 4674,
+      "sha256": "d3220002c7c386b27b3545e0777f612254595dff6353e602103fe40ab84b13ed"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/assets/starter/dot-matrix.js",
+      "bytes": 1696,
+      "sha256": "dc47f36a81658c448870f647cb8723a2deaceaffe1722b82b10391fbdd497f49"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/assets/starter/index.html",
+      "bytes": 2123,
+      "sha256": "d01952bf054d0bc755207f95bd2b24bc64838785dcff077365f19fbbacfe28c5"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/assets/starter/mini-card.css",
+      "bytes": 4743,
+      "sha256": "19a438d582a4465704bef2b936784cb734e99201e16642af3ed64ef04997ecb2"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/assets/starter/mini-card.js",
+      "bytes": 10883,
+      "sha256": "c62e9e734500fe7647bd991b0b45a582390647dfa602c73c748a354f6a027f4e"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/assets/starter/mini-core.js",
+      "bytes": 4687,
+      "sha256": "55040c4c5ae4a06c74a9c1fa5a095bb0af6f0d097dc3aa4c40fd3bc0248aac5a"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/assets/starter/mini-demo.js",
+      "bytes": 4775,
+      "sha256": "6e1ee3896e1f4b33ae86cef2803258e92354879232d45b1a885516441230d0ff"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/assets/starter/square-animation.js",
+      "bytes": 102910,
+      "sha256": "1a84ddb9935ef3375e7d743208537fb3845c404dea61d2f984f81247c4f38cac"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/references/card-contract.md",
+      "bytes": 5567,
+      "sha256": "82c8e999c4703357ff02895c62944fb683401ca87ef1925fbafa756bf5314ff1"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/references/photo-to-matrix.md",
+      "bytes": 4788,
+      "sha256": "17f06c40c9e8cb5c6d1cda76ad7cbace6cdd8a9dfff6f81c19f3b3464e1b219f"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/references/reference-motion.md",
+      "bytes": 5989,
+      "sha256": "c79f589508f6c84afb0a3c716465792a3ef475c844c122749ef7f043b48b2ce3"
+    },
+    {
+      "path": "live-mini/live-task-cards/skills/dot-matrix-mini-app/scripts/scaffold.py",
+      "bytes": 1077,
+      "sha256": "4c4271a2fd6a1384518676b9713fe49e88d86d4f17544beb92115d1de0c058e8"
+    },
+    {
+      "path": "live-mini/live-task-cards/src/client.mjs",
+      "bytes": 2734,
+      "sha256": "367862f4ac6379c0ecd825371eed1605a44c0539ac5bcf69e3a18c3dd5e49f19"
+    },
+    {
+      "path": "live-mini/live-task-cards/src/config.mjs",
+      "bytes": 3108,
+      "sha256": "4d8c42bf38add0acb6e98ab27f6467eff9f78de7e4f7d4cee883932645f5c54e"
+    },
+    {
+      "path": "live-mini/live-task-cards/src/demo.mjs",
+      "bytes": 1971,
+      "sha256": "29b5ec32831a66ea02fe2771d8986109cea07067de65d961ac7db1a1b5fc1560"
+    },
+    {
+      "path": "live-mini/live-task-cards/src/errors.mjs",
+      "bytes": 316,
+      "sha256": "f5114a6aa1c58a0f82dda833753baa9ebace530c8ecf1e5d2a402d21d469b044"
+    },
+    {
+      "path": "live-mini/live-task-cards/src/http.mjs",
+      "bytes": 12250,
+      "sha256": "3a9f9f858f9cf0c94616cac862362da8f3074715eb8a0a6d43cdab885c83d133"
+    },
+    {
+      "path": "live-mini/live-task-cards/src/loaders.mjs",
+      "bytes": 5699,
+      "sha256": "f211070971226fe8a885bffaeda9514f58159c2f6e3d81fe910af370c0f6c624"
+    },
+    {
+      "path": "live-mini/live-task-cards/src/model.mjs",
+      "bytes": 10264,
+      "sha256": "f6a848af7473852eea46af27af038abfe60f4b0934478b881abef7615acb0b64"
+    },
+    {
+      "path": "live-mini/live-task-cards/src/service.mjs",
+      "bytes": 12354,
+      "sha256": "611e38535734f248f8d713ac810e96589de9e17295f8ade631327560be6d1519"
+    },
+    {
+      "path": "live-mini/live-task-cards/src/spectrum-presenter.mjs",
+      "bytes": 7002,
+      "sha256": "6970883497fa89c061b736a40d3673c4714ecb7e7f3accfe5549fafc614048b5"
+    },
+    {
+      "path": "live-mini/live-task-cards/src/store.mjs",
+      "bytes": 10371,
+      "sha256": "1719d44dc7a27fd856aa55a202ba7b9118c0e3342c4b2b373264f52eb7fd0279"
+    },
+    {
+      "path": "live-mini/live-task-cards/src/types.d.ts",
+      "bytes": 3148,
+      "sha256": "f2cb29f4e566aa8715876bbd74164ff7c54c6d17ebaa9ba389debce40adbbe67"
+    },
+    {
+      "path": "live-mini/live-task-cards/src/vercel-blob-lite.mjs",
+      "bytes": 6075,
+      "sha256": "9ff92ae1e0592a9ee0d66f030119cc1acd912c89308f012cb5746ff1e7a7e33c"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/blob.test.mjs",
+      "bytes": 5665,
+      "sha256": "924079f73e1a1fe1093e4210db1a205a13ec1cc818ac7061825e67c3bf4bd7de"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/card-motion.test.mjs",
+      "bytes": 966,
+      "sha256": "a9728ea755051d6327684b819306a0b5b90731ee4ad99facde8fc857b9b711b5"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/custom-loader-browser.mjs",
+      "bytes": 6962,
+      "sha256": "60541a6e5ec61121408e7fd430a863bd26dc5af6096fcb12031350a0689d5833"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/helpers.mjs",
+      "bytes": 2162,
+      "sha256": "66f8ef873153f17d2bb33a36a18308677ed75293b80cdd3980c8ebd3cb6b6c4a"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/http.test.mjs",
+      "bytes": 7061,
+      "sha256": "e031d7e07ecd992922e1ca0b41c95eb5cb4dd3666aa617d13a33df994dfb25eb"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/loaders.test.mjs",
+      "bytes": 13716,
+      "sha256": "e3b1b81b94e4c28c2d30f6697c84551440e6750e234eb2d82f5d1a150535b3b6"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/matrix-plan.test.mjs",
+      "bytes": 2329,
+      "sha256": "3e053a0d00096abad13524ce1c14180333fcda71970a80d9c57665c4073274ab"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/model.test.mjs",
+      "bytes": 6065,
+      "sha256": "9f6b93961b869ad03d1a0f70e83a80623da5cadabadb42d13a3129494960c41c"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/presenter.test.mjs",
+      "bytes": 7458,
+      "sha256": "e9e3b6f10b0906810e3c2a9721da3dd4b5bdb8e2aad95bf555f3ae08fb12be28"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/redis.test.mjs",
+      "bytes": 3036,
+      "sha256": "4ed3358b6e6a62f7808afe2e803ce17f415470bb0e3908722ed7decf6ebdb5af"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/render.test.mjs",
+      "bytes": 3147,
+      "sha256": "92e073d7d98f98db198742452f80d326a61b7ad0835d91c768b9a42edf4b79ad"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/service.test.mjs",
+      "bytes": 13212,
+      "sha256": "3452dda543dd0ca754ec2b689827df97cc052161daabd0b73273a26ee7b93ec8"
+    },
+    {
+      "path": "live-mini/live-task-cards/tests/workflow-progress.test.mjs",
+      "bytes": 4934,
+      "sha256": "1159830ad4d026682e782eb6878bb856838c5ba468d9f2239209d34061a09459"
+    },
+    {
+      "path": "live-mini/live-task-cards/vercel.json",
+      "bytes": 113,
+      "sha256": "a389d09d013ee3cde913538812ecc7af780f91d9dc874c6b102fc505b29b2569"
+    },
+    {
+      "path": "live-mini/migration/BLOB-CAS.md",
+      "bytes": 4844,
+      "sha256": "b5d3cf2df042c8b64521e15c9052cccdbc80b7b136e6e1b7d18d4c7b9a81264f"
+    },
+    {
+      "path": "live-mini/migration/DEPLOY-NOTES.md",
+      "bytes": 3477,
+      "sha256": "a84e20c5319459de064f54b720fcb40c56949b41f2ce0ab0b5df7fd2d5af8e0b"
+    },
+    {
+      "path": "live-mini/runtime/README.md",
+      "bytes": 1159,
+      "sha256": "df6c4984035e090c774bf70e721e46678ad58518e8aff0323d394413e105fa95"
+    },
+    {
+      "path": "live-mini/runtime/live-card-milestones.mjs",
+      "bytes": 21689,
+      "sha256": "945cdc9d1ab8891970f9fc398ae30d992c8600c4a83ea71a2d444edd78d2f30c"
+    },
+    {
+      "path": "orchestrator-memory/README.md",
+      "bytes": 228,
+      "sha256": "28538d21bd425d75dd3276e4a922b941c9d95c01c5382b2615bcf57ab797c6e4"
+    },
+    {
+      "path": "photon-skills/README.md",
+      "bytes": 953,
+      "sha256": "e162feaf16bdba338cc626d481b4b8ddcc93121435b77072d1585aaa9046a83a"
+    },
+    {
+      "path": "photon-skills/imessage/SKILL.md",
+      "bytes": 3868,
+      "sha256": "193282f18a1f7238ef042967d293495a1d5670812a1b750deeb06103549d9915"
+    },
+    {
+      "path": "photon-skills/imessage/references/hosted-v2.md",
+      "bytes": 6651,
+      "sha256": "b4ce442bfccb595d7e1978ea35de7551f062662c2ddbe7d4222a2a507f9b1012"
+    },
+    {
+      "path": "photon-skills/imessage/references/legacy-and-tools.md",
+      "bytes": 2039,
+      "sha256": "a43412c9233fc756a21ed52efb446bf7ee8b653aee59ed3ab810be5d9e9f5ac2"
+    },
+    {
+      "path": "photon-skills/imessage/references/local-v3.md",
+      "bytes": 8322,
+      "sha256": "6643ace934f9e82f12f4cd7f52944b1d990a15913787bfde0478a771a0ef039f"
+    },
+    {
+      "path": "photon-skills/imessage/references/spectrum.md",
+      "bytes": 3974,
+      "sha256": "f74ec658d398e5f97dfe9938a6eb17316cd1bd676938d59c216984dbd9087878"
+    },
+    {
+      "path": "photon-skills/photon-cli/SKILL.md",
+      "bytes": 7407,
+      "sha256": "8ae21002d3be416efd9aff9828d59675422b16cd6625ee2f187c0fe7ee49fbd8"
+    },
+    {
+      "path": "photon-skills/photon-cli/commands.md",
+      "bytes": 6465,
+      "sha256": "8571c794bdd6bf12bb955d4dfe0c27cfac57b3a0c1934ee0968de10cd317bf66"
+    },
+    {
+      "path": "photon-skills/photon-cli/environment.md",
+      "bytes": 3135,
+      "sha256": "ebd47a8c4a62aa07001ec62162ff0683ce6ee244fcb104d0a45df069a83f75c4"
+    },
+    {
+      "path": "photon-skills/photon-cli/getting-started.md",
+      "bytes": 8355,
+      "sha256": "7f5986a2ada5bd11cf3d146e84f54ff98f764a43da7dd815d68a68fc1ba0455c"
+    },
+    {
+      "path": "photon-skills/photon-cli/spectrum.md",
+      "bytes": 3745,
+      "sha256": "bda05c8ebddd373ff71fa7d636b9f732d8dcd8706f938d63e2a7120520859a8c"
+    },
+    {
+      "path": "photon-skills/photon-cli/workflows.md",
+      "bytes": 4490,
+      "sha256": "b8fbb4a7dbf5402714a97f6f36b7ba6cb92df83301006e4aad13239aecc671fa"
+    },
+    {
+      "path": "photon-skills/spectrum/SKILL.md",
+      "bytes": 3429,
+      "sha256": "0a5efcf42345008c7c6493ae54f63b6fea717598478199840a0ed274d02db541"
+    },
+    {
+      "path": "photon-skills/spectrum/best-practices.md",
+      "bytes": 12015,
+      "sha256": "fd0535f3babd1ee764d67132b11a97f39255104648ef1aad8173b2a33b305eb0"
+    },
+    {
+      "path": "photon-skills/spectrum/capability-semantics.md",
+      "bytes": 2122,
+      "sha256": "7451fec93c937bf92238e916f6e811ce4e41ddd5459a2211950b0efdda471fe5"
+    },
+    {
+      "path": "photon-skills/spectrum/content.md",
+      "bytes": 4449,
+      "sha256": "ed0e8721f13ebcca590dc09c74eb228164e967ea8e048412dda57d7e28116e7c"
+    },
+    {
+      "path": "photon-skills/spectrum/custom-events-and-lifecycle.md",
+      "bytes": 1389,
+      "sha256": "9a235b18b194f87f93b60cd6f9d11b2181e5ce34eec812fa521a057b08096c18"
+    },
+    {
+      "path": "photon-skills/spectrum/custom-platforms.md",
+      "bytes": 7528,
+      "sha256": "e56f390a127abfffb15f20785f571a1f4c32c6a0b5404e0cabfad8cb3277426e"
+    },
+    {
+      "path": "photon-skills/spectrum/getting-started.md",
+      "bytes": 4397,
+      "sha256": "b9315bad8dba9e8ec364ffb975ae80d4878ce769632aae61f39a39a79db5ea63"
+    },
+    {
+      "path": "photon-skills/spectrum/messages.md",
+      "bytes": 4490,
+      "sha256": "129c6d7c8e6a3d65f8bb1a6c89dcc1d66f17e412a5c3eebaa0be59bbd0f3ef8f"
+    },
+    {
+      "path": "photon-skills/spectrum/platform-narrowing.md",
+      "bytes": 1764,
+      "sha256": "5c92b185543411e20fc7ca5d3b30392b96925591faa0066b7c5391186ef19bb9"
+    },
+    {
+      "path": "photon-skills/spectrum/providers/imessage.md",
+      "bytes": 7049,
+      "sha256": "7ea0c9898684001060b16feea25e7c5877ef3830456033ef65f4254208192480"
+    },
+    {
+      "path": "photon-skills/spectrum/providers/terminal.md",
+      "bytes": 1964,
+      "sha256": "2e2fa8a01ed1d4b8b6e6669aeeb499ef2e03529bc13f9f6fff81bd29fda7f187"
+    },
+    {
+      "path": "photon-skills/spectrum/providers/whatsapp-business.md",
+      "bytes": 1040,
+      "sha256": "339076719d35996c98f4180b2a15ac4b8f9a0b26047acc20e5c076d67b5a0c61"
+    },
+    {
+      "path": "photon-skills/spectrum/reactions-and-replies.md",
+      "bytes": 1259,
+      "sha256": "86ab9c07c9ed66c924a3d20c0ae9e898d587d6e862415f327c7a57790f43dc9e"
+    },
+    {
+      "path": "photon-skills/spectrum/spaces-and-users.md",
+      "bytes": 3792,
+      "sha256": "b5cb561e3521e31a2baaa2c5a9f890143c4a1559823e56137b081cb6eb5702c8"
+    },
+    {
+      "path": "routines/README.md",
+      "bytes": 829,
+      "sha256": "6c5eec6d1bca50f4dbd10546a08315bf6d9f808d5f84d7f1fb562087c73589b6"
+    },
+    {
+      "path": "routines/photon-imessage-wake.REDACTED.json",
+      "bytes": 1081,
+      "sha256": "18f7ff832f745dc01b96f5e5a799272f35ec38cd441f2e2415bcad17e6a1764d"
+    },
+    {
+      "path": "skills/README.md",
+      "bytes": 1550,
+      "sha256": "c0b1462feb19ebc032ed7c24e0a4e4e1a52372569eef7db41e6016fdf6405ab3"
+    },
+    {
+      "path": "skills/getting-started/SKILL.md",
+      "bytes": 21805,
+      "sha256": "f03f3adbbccfdc7a90687da609af00840fb681394de6858bec282e5623523231"
+    },
+    {
+      "path": "skills/imessage-creator/SKILL.md",
+      "bytes": 1891,
+      "sha256": "617c892849d716972e9b6c0d21bf46a0aa6eb180d8c64202bf33ec9659cc935e"
+    },
+    {
+      "path": "skills/imessage-feature-add/SKILL.md",
+      "bytes": 2125,
+      "sha256": "61093f7facd13304d1db0e6e1501f4543909f3cced3e3bc8e7dc10063c0fddcb"
+    },
+    {
+      "path": "skills/imessage-front-door-wake/SKILL.md",
+      "bytes": 10058,
+      "sha256": "382b568803e2caacc23e91ee2c0c9a82e9d68646d9af55d681a7c4289a25bce6"
+    },
+    {
+      "path": "skills/imessage-master-orchestrator/SKILL.md",
+      "bytes": 1226,
+      "sha256": "969bc3cb9a5d806c40b04fc3eaa46d1cc0a1385326a22534b7c55ec6e057d0ec"
+    },
+    {
+      "path": "skills/live-mini-enable/SKILL.md",
+      "bytes": 7995,
+      "sha256": "5d773165a44c666fc897615d0e3310da798f3740cac5c86239453e99e97447b0"
+    },
+    {
+      "path": "skills/photon-demo-image-overlay/SKILL.md",
+      "bytes": 14200,
+      "sha256": "7159117a42b14d84aa83211c820a48b520698c24a58872bcc45929ebf89f733a"
+    },
+    {
+      "path": "skills/photon-image-card-delivery/SKILL.md",
+      "bytes": 5419,
+      "sha256": "3fe8590d0ab022a0a9e54a7783ad1ef2f997c529d850d69a7ae67234a1afd014"
+    },
+    {
+      "path": "skills/spectrum-imessage-apps-nudge/SKILL.md",
+      "bytes": 3793,
+      "sha256": "119f4e666bb1583417134c6836e658534c8c7c0a39ade7c0d50af5c0769764bd"
+    },
+    {
+      "path": "stt/INSTALL.md",
+      "bytes": 4338,
+      "sha256": "22fe71da18a49445b9dc0a6a1fb2f3daa63f037d578a9af59352615506543bc8"
+    },
+    {
+      "path": "stt/MODEL_MANIFEST.json",
+      "bytes": 3632,
+      "sha256": "96aab1661bb6d9220be72f2a6b9cdb1091da55f49f3ea4cabed8e06526f51e17"
+    },
+    {
+      "path": "stt/requirements.txt",
+      "bytes": 23,
+      "sha256": "012839e6ba7e5398d5dc5607e31d1a4ba7ee9bf51b1b3fce921583e98ee435e2"
+    }
+  ]
+}

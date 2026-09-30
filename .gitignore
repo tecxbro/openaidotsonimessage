@@ -1,0 +1,19 @@
+node_modules/
+.env
+.venv*/
+data/unread/
+data/outbound/
+data/inbound/
+data/models/
+*.log
+pids/
+.DS_Store
+
+# Keep local tooling, generated outputs and all private runtime state out of Git
+__pycache__/
+*.pyc
+.vercel/
+.venv/
+.env.*
+!.env.example
+*.tsbuildinfo

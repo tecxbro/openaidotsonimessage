@@ -1,0 +1,4 @@
+interface:
+  display_name: "Technical Motion Explainer"
+  short_description: "Animate evidence-grounded technical stories"
+  default_prompt: "Create a polished, silent-ready technical motion explainer with an MP4, editable source, timed captions, and verified visual QA."
