@@ -2,6 +2,7 @@ import { RuntimeDiagnostics, type DiagnosticOperation } from "./runtime-diagnost
 import { pendingMediaJobs, saveMediaJob, type MediaJob } from "./media-jobs.ts";
 import { queueDotWake } from "./dot-inbox.ts";
 import { recoverDurableState } from "./recovery.ts";
+import { assertRecoveryTimestamp, isAfterRecoveryCutover, loadRecoveryPolicy, type RecoveryPolicy } from "./recovery-policy.ts";
 import { hasSetupConfettiBeenSent, markSetupConfettiSent } from "./setup-confetti.ts";
 import { Spectrum, app, attachment, edit, group, poll, voice, type Message, type Space } from "@spectrum-ts/core";
 import { effect, imessage } from "@spectrum-ts/imessage";
@@ -148,6 +149,10 @@ export class GpProofRuntime {
   private webhookActive = new Set<string>();
   private typingStops = new Map<string, Promise<TypingStopTiming>>();
   private typingCleanupTasks = new Set<Promise<void>>();
+  private recoveryPolicyLoad?: Promise<RecoveryPolicy | undefined>;
+  private recoveryPolicy(): Promise<RecoveryPolicy | undefined> {
+    return this.recoveryPolicyLoad ??= loadRecoveryPolicy(this.config.requireRecoveryPolicy);
+  }
   private commit<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.commits.then(fn, fn);
     this.commits = run.then(() => undefined, () => undefined);
@@ -196,8 +201,13 @@ export class GpProofRuntime {
   }
 
   private async startInner(): Promise<void> {
+    const policy = await this.recoveryPolicy();
     await ensureDataDir();
-    this.pending = await recoverDurableState();
+    this.pending = await recoverDurableState(policy);
+    const mediaJobs = policy ? await pendingMediaJobs() : undefined;
+    // No recovered media lookup/download may establish eligibility using the
+    // SDK getMessage() timestamp fallback. Require its prior admitted event.
+    if (policy) mediaJobs!.forEach(job => assertRecoveryTimestamp(policy, job.recoveryEventTimestamp));
     this.handled = await loadHandledIds();
     if (this.pending.length > 0) this.scheduleFlush();
 
@@ -211,7 +221,7 @@ export class GpProofRuntime {
     this.app = app;
     this.diagnostics.lifecycle("provider_connected");
     log("hosted iMessage provider connected");
-    for (const job of await pendingMediaJobs()) {
+    for (const job of mediaJobs ?? await pendingMediaJobs()) {
       if (this.handled.has(job.messageId)) { await saveMediaJob({ ...job, state: "done" }); continue; }
       if (job.senderId !== this.config.authorizedSenderId) continue;
       const task = this.observeBackground("media_recovery", () => this.resumeMedia(job)).finally(() => this.inboundTasks.delete(job.messageId));
@@ -295,17 +305,19 @@ export class GpProofRuntime {
 
   private async resumeMedia(job: MediaJob): Promise<void> {
     try {
+      const policy = await this.recoveryPolicy();
+      if (policy) assertRecoveryTimestamp(policy, job.recoveryEventTimestamp);
       const space = await this.resolveSpace(job.spaceId, job.lineId);
       const message = await space.getMessage(job.messageId);
       if (!message) { log(`media recovery source unavailable id=${job.messageId}`); return; }
-      await this.onMessage(space, message, { streamReceivedAt: job.streamReceivedAt });
+      await this.onMessage(space, message, { streamReceivedAt: job.streamReceivedAt, recoveryEventTimestamp: policy ? job.recoveryEventTimestamp : undefined });
     } catch { log(`media recovery pending id=${job.messageId}`); }
   }
 
   private async onMessage(
     space: Space,
     message: Message,
-    timing: { streamReceivedAt?: string } = { streamReceivedAt: new Date().toISOString() },
+    timing: { streamReceivedAt?: string; recoveryEventTimestamp?: string } = { streamReceivedAt: new Date().toISOString() },
   ): Promise<void> {
     if (message.direction === "outbound") return;
     if (message.platform !== "imessage") return;
@@ -320,6 +332,22 @@ export class GpProofRuntime {
     if (this.handled.has(message.id)) {
       log(`drop duplicate id=${message.id}`);
       return;
+    }
+
+    const policy = await this.recoveryPolicy();
+    let eventTimestamp = message.timestamp;
+    if (policy) {
+      if (timing.recoveryEventTimestamp !== undefined) {
+        assertRecoveryTimestamp(policy, timing.recoveryEventTimestamp);
+        eventTimestamp = new Date(timing.recoveryEventTimestamp);
+      }
+      // Pinned hosted stream: event.occurredAt (read events may use readAt).
+      // This is not proof of original Apple creation time. Reject before any
+      // bridge receipt, media, context persistence, wake or automatic action.
+      if (!isAfterRecoveryCutover(policy, eventTimestamp)) {
+        log("drop recovery event: missing, invalid, or not after cutoff");
+        return;
+      }
     }
 
     // Recipient read our outbound — do not queue or wake Grok.
@@ -343,6 +371,7 @@ export class GpProofRuntime {
       messageId: message.id, spaceId: space.id, senderId,
       lineId: (space as Space & { phone?: string }).phone,
       state: "pending", createdAt: new Date().toISOString(), streamReceivedAt: timing.streamReceivedAt,
+      ...(policy ? { recoveryEventTimestamp: eventTimestamp.toISOString() } : {}),
     } : undefined;
     await saveConversationContext(space.id, { senderId, lineId: (space as Space & { phone?: string }).phone });
     const contextSavedAt = new Date().toISOString();
@@ -431,7 +460,7 @@ export class GpProofRuntime {
         id: message.id,
         spaceId: space.id,
         senderId,
-        timestamp: message.timestamp.toISOString(),
+        timestamp: eventTimestamp.toISOString(),
         receivedAt: new Date().toISOString(),
       },
       attachmentExtras,
@@ -531,7 +560,7 @@ export class GpProofRuntime {
       this.pending = [];
       await savePendingBatch([]);
       log(`flushed unread batchId=${batchId} count=${messages.length}`);
-      if (!(await hasSetupConfettiBeenSent())) {
+      if (!(await this.recoveryPolicy())?.suppressOnboarding && !(await hasSetupConfettiBeenSent())) {
         for (const spaceId of new Set(messages.map(m => m.spaceId))) {
           await enqueueOutbound({ kind: "text", spaceId, text: "it’s dot here", effect: "confetti" }, "setup-confetti");
         }

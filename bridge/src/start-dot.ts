@@ -4,6 +4,7 @@ import { acquireFileLock } from './file-lock.ts';
 import { DATA_DIR } from './types.ts';
 import { join } from 'node:path';
 import type { GpProofRuntime } from './runtime.ts';
+import { loadRecoveryPolicy, recoveryPolicyRequired } from './recovery-policy.ts';
 
 let stage = 'validate_configuration';
 let runtime: GpProofRuntime | undefined;
@@ -14,6 +15,9 @@ try {
   const cli = process.env.PHOTON_CLI || 'photon';
   if (!projectId || !authorizedSenderId) throw new Error('missing_config');
   release = await acquireFileLock(join(DATA_DIR, '.runtime-lock'), 0);
+  const requireRecoveryPolicy = recoveryPolicyRequired();
+  // Validate the persistent boundary before reading credentials or connecting.
+  await loadRecoveryPolicy(requireRecoveryPolicy);
   process.env.SPECTRUM_CLOUD_URL = 'https://spectrum.photon.codes';
   process.env.PHOTON_API_HOST = 'https://app.photon.codes';
   process.env.SPECTRUM_IMESSAGE_ADDRESS = 'imessage.spectrum.photon.codes:443';
@@ -26,7 +30,7 @@ try {
   let credential = JSON.parse(raw);
   raw = undefined;
   if (credential.id !== projectId || typeof credential.projectSecret !== 'string' || !credential.projectSecret) throw new Error('invalid_credential_response');
-  runtime = new GpProofRuntime({ projectId, projectSecret: credential.projectSecret, authorizedSenderId, hostMode: 'dot-local', greetingFastPath: false });
+  runtime = new GpProofRuntime({ projectId, projectSecret: credential.projectSecret, authorizedSenderId, hostMode: 'dot-local', greetingFastPath: false, requireRecoveryPolicy });
   credential = undefined;
   stage = 'consume_provider_stream';
   await runtime.start();

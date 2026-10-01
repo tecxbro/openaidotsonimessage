@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "dot-agent": "bun run src/dot-agent.ts",
     "start:dot": "bun run src/start-dot.ts",
-    "preflight": "bun run src/preflight.ts"
+    "preflight": "bun run src/preflight.ts",
+    "recovery-init": "bun run src/recovery-init.ts"
   },
   "dependencies": {
     "heif2jpeg": "0.1.6",

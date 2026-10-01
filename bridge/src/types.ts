@@ -277,4 +277,6 @@ export type Config = {
   webhookKey?: string;
   hostMode?: "webhook" | "dot-local";
   greetingFastPath?: boolean;
+  /** Refuse startup if an explicitly initialized recovery policy is absent. */
+  requireRecoveryPolicy?: boolean;
 };

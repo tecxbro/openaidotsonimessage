@@ -6,7 +6,7 @@ Prepared on 2026-09-30 in an isolated publication checkout for `tecxbro/openaido
 
 - Source base: `tecxbro/photongrokbot` commit `8c710413c99a6fd8022727326ca682d267393953`
 - Implementation: the complete current working tree of `dot/full-runtime-20260930`, including dot-local inbox/wait/reply, recovery, timing, safe kernel locking, Moonshine scripts, and all existing rich-message modules
-- All 272 reusable source files from the implementation checkout are included. Production runtime code is byte-for-byte identical to that checkout. Publication changes are confined to README/navigation, documentation status and portable paths, ignore rules, one old manifest path, and one test-only message identifier replaced with an explicitly synthetic UUID
+- All 276 reusable source files from the implementation checkout are included. Production runtime code is byte-for-byte identical to that checkout. Publication changes are confined to README/navigation, documentation status and portable paths, ignore rules, one old manifest path, and one test-only message identifier replaced with an explicitly synthetic UUID
 - All preexisting adopter-template project skills and role documents are retained. These are reusable repository content, not the assistant's private notes or active conversation state
 - Article: Markdown, text, editable DOCX, final PDF, and the Python DOCX builder
 - Motion explainer: final 60-second 1080p/60fps MP4 (3,765,150 bytes), editable animation/project source, captions, storyboard, preview/poster, font assets/notices, quality records, and reusable rendering skill
@@ -57,7 +57,7 @@ The reviewed follow-up contains rejected background drain/flush/stop tasks and a
 
 The source task reports **115 tests / 564 expectations / zero failures**, TypeScript and full offline preflight passing. Publication checks repeated the full 115-test / 564-expectation suite, TypeScript, and every offline preflight check successfully against this isolated checkout. An independent reviewer reran **12 focused tests / 60 expectations**. Tests use synthetic state and injected providers. Existing September 30 evidence above remains historical.
 
-The intended complete snapshot now comprises **304 files**, including the manifest. The remote publication has **298 files** after this text update; six large binary assets are pending upload:
+At the October 1 03:48 reliability update, the intended snapshot comprised **304 files**, including the manifest, with **298 files** published. The later recovery-guard update below adds four files. Six large binary assets remain pending upload:
 
 - `extras/video/photon-dot-imessage-final.mp4`
 - `extras/video/storyboard-preview.jpg`
@@ -67,3 +67,12 @@ The intended complete snapshot now comprises **304 files**, including the manife
 - `live-mini/live-task-cards/references/03-stages.png`
 
 The manifest records all audited local deliverable hashes and explicitly identifies those pending remote assets. The animation source is already published; remote MP4/preview/reference-image links will work once the remaining uploads complete. No credentials or runtime diagnostic journals are included.
+
+
+## October 1 offline recovery-guard publication
+
+The reviewed opt-in guard adds 11 source/test/document changes, including four new files. The publication now has **302 remote files** and **308 intended files**, including the manifest; the same six larger media assets remain pending. The exact guard source is documented in [`RECOVERY_GUARD.md`](RECOVERY_GUARD.md).
+
+The latest offline source passed **125 tests / 675 expectations / zero failures** and TypeScript, including 10 focused guard tests / 111 expectations. Earlier test and activation evidence remains dated historical evidence. No fresh model-integrity preflight or live provider check is claimed for this replacement filesystem.
+
+The validation setup is currently offline after filesystem replacement. The new recovery guard is **inactive pending authorized fresh login and startup**. No private cutoff, handled-message history, credentials, queues or runtime state are included or reconstructed. The cutoff uses the provider event timestamp; it does not prove original Apple message creation time and cannot prevent SDK preprocessing before bridge ingress. No source behavior beyond the reviewed overlay is changed by publication.

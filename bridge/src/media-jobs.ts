@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DATA_DIR } from './types.ts';
-export type MediaJob = { messageId: string; spaceId: string; senderId: string; lineId?: string; state: 'pending' | 'done'; createdAt: string; streamReceivedAt?: string };
+export type MediaJob = { messageId: string; spaceId: string; senderId: string; lineId?: string; state: 'pending' | 'done'; createdAt: string; streamReceivedAt?: string; recoveryEventTimestamp?: string };
 const DIR = join(DATA_DIR, 'media-jobs');
 export async function saveMediaJob(job: MediaJob): Promise<void> {
   await mkdir(DIR, { recursive: true, mode: 0o700 });

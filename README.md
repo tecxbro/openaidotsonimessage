@@ -7,6 +7,7 @@ This publication snapshots the cloud implementation from 30 September 2026, with
 ## Start here
 
 - [Runtime setup and operating guide](docs/DOT_RUNTIME.md)
+- [Offline recovery guard and its limits](docs/RECOVERY_GUARD.md)
 - [Issues, fixes, and remaining boundaries](docs/ISSUES_AND_FIXES.md)
 - [Implementation verification and live evidence](docs/BUILD_VERIFICATION.md)
 - [Publication inventory, privacy exclusions, and fresh checks](docs/PUBLICATION.md)
@@ -42,9 +43,11 @@ Follow the runtime guide to configure private paths, install Moonshine, run pref
 
 ## Verification boundaries
 
-The latest reviewed implementation passes 115 registered bridge tests / 564 expectations plus its legacy assertions, TypeScript and complete model-integrity preflight. The 12 focused diagnostics tests / 60 expectations also passed independent review. Live Mini passed 123 application and 7 skill tests. See the publication report for the checks repeated on this exact snapshot.
+The latest reviewed offline recovery-guard source passes 125 registered bridge tests / 675 expectations plus its legacy assertions and TypeScript. The earlier reliability snapshot passed 115 tests / 564 expectations, full model-integrity preflight, and an independent 12-test / 60-expectation diagnostics review. Live Mini passed 123 application and 7 skill tests. See the publication report for the checks repeated on this exact snapshot.
 
 A dot-authored text round trip, provider acceptance, and correlated read receipt were observed on the original authorized setup. Real-phone voice and rich-message rendering still need end-to-end checks. Live Mini has no public deployment in this publication. The bridge requires both a running runtime and an active dot task to respond.
+
+The validation setup is currently offline after its execution filesystem was replaced. The recovery guard is inactive pending authorized fresh login and startup. Its boundary uses provider-event time, not original Apple message creation time, and cannot prevent SDK preprocessing before bridge ingress. See the [recovery guide](docs/RECOVERY_GUARD.md).
 
 ## Privacy and provenance
 

@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, readFileSync } from "node:fs";
 import type { Config } from "./types.ts";
 import { ENV_PATH } from "./types.ts";
+import { recoveryPolicyRequired } from "./recovery-policy.ts";
 
 function stripQuotes(value: string): string {
   if (
@@ -45,5 +46,6 @@ export function loadConfig(): Config {
     authorizedSenderId: required("AUTHORIZED_SENDER_ID"),
     webhookUrl: required("GROK_ORCHESTRATOR_WEBHOOK_URL"),
     webhookKey: required("GROK_ORCHESTRATOR_WEBHOOK_KEY"),
+    requireRecoveryPolicy: recoveryPolicyRequired(),
   };
 }

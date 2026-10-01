@@ -48,8 +48,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 4869,
-      "sha256": "b38ce732b175f13099c5da3835a7b0ab3394bcec87a3f320e40f4954a348587e"
+      "bytes": 5351,
+      "sha256": "20f128074e22b4cc0235cd7427268b3e0ab307348ee15a54b0056b023b50f57b"
     },
     {
       "path": "agents/README.md",
@@ -273,8 +273,8 @@
     },
     {
       "path": "bridge/package.json",
-      "bytes": 762,
-      "sha256": "2a27f0017eb824eac37570534601c6f003c245fc76bc39aa8a42c73f262d4baf"
+      "bytes": 815,
+      "sha256": "e757ce7c72db24857575a565667e6642373d6f8d10009347dc9b9abc56bcc6c5"
     },
     {
       "path": "bridge/prompts/voice-policy.md",
@@ -323,8 +323,8 @@
     },
     {
       "path": "bridge/src/config.ts",
-      "bytes": 1452,
-      "sha256": "68a59b9f71acac4f11eed9d2f9cb8af5ec7cb70ef4cb52cf46f9f0c39adf6852"
+      "bytes": 1568,
+      "sha256": "e0c612d779319c28aedb8a6c631f7bc7071b42398b14035e9f933c27a1ccea87"
     },
     {
       "path": "bridge/src/dot-agent-reply.test.ts",
@@ -408,8 +408,8 @@
     },
     {
       "path": "bridge/src/media-jobs.ts",
-      "bytes": 1165,
-      "sha256": "4ccf5f9102fdadff1f9964e03e49fe267078435e767f642d25c50b6a370a29fa"
+      "bytes": 1198,
+      "sha256": "2ed8510907d38572ae520304edecc1a00fe8812d22bab5bf99181471a54dc8fd"
     },
     {
       "path": "bridge/src/outbound-app.test.ts",
@@ -477,9 +477,24 @@
       "sha256": "1232a139049ea2eec21afe169ab3222710cd1a13ae45b493374bc16c234e72d5"
     },
     {
+      "path": "bridge/src/recovery-init.ts",
+      "bytes": 818,
+      "sha256": "3701706f38ddaad431aea7f7b9c58e8641a553e76dc0b4e4919afdde92a0740d"
+    },
+    {
+      "path": "bridge/src/recovery-policy.test.ts",
+      "bytes": 14150,
+      "sha256": "7b9a4a19c7f886a7dae2240b009aceb91fbc214ca7353f2fdf9959ad91a2d7cd"
+    },
+    {
+      "path": "bridge/src/recovery-policy.ts",
+      "bytes": 4496,
+      "sha256": "8e26197652a7a317c79fb1577d81182b62039f083be8fc02b7dea9be947e02e8"
+    },
+    {
       "path": "bridge/src/recovery.ts",
-      "bytes": 1555,
-      "sha256": "37a5ce9582c34aeaf3ae2f175456b295285ac1d2cbd15657490ac35b10a46c8d"
+      "bytes": 1931,
+      "sha256": "8f751dc2755223a9c04e6f74900bb098f4e22ed43d3cb4dc6ed157f5dac3631e"
     },
     {
       "path": "bridge/src/reply-fallback.test.ts",
@@ -503,8 +518,8 @@
     },
     {
       "path": "bridge/src/runtime.ts",
-      "bytes": 40596,
-      "sha256": "c535c1d75c24416738d885d71a176d71aabaccc289d1a8cfd12e9cda6236a774"
+      "bytes": 42437,
+      "sha256": "6dcf5af46e4f75115dfabf05190d9f1239fa05027ea4fc7f072dad00e350d885"
     },
     {
       "path": "bridge/src/send-hello.ts",
@@ -523,8 +538,8 @@
     },
     {
       "path": "bridge/src/start-dot.ts",
-      "bytes": 2137,
-      "sha256": "51e7c59c33a8ac34a55cd5bcba7d8afe5b978af795afe72c39aee2af4e56e2de"
+      "bytes": 2432,
+      "sha256": "249617c8221283024b9dd527b388783110834f41d490287f70ee3c73f68902a6"
     },
     {
       "path": "bridge/src/storage.ts",
@@ -533,8 +548,8 @@
     },
     {
       "path": "bridge/src/types.ts",
-      "bytes": 8589,
-      "sha256": "223e69f21008281ffbc3a3f2524bc4144206bae594bff2279b1f00991bc2fb3a"
+      "bytes": 8704,
+      "sha256": "8ad30d76d892aacd3d7283bdf758cbd38403e9b42dfaa143003372a2d0e6997a"
     },
     {
       "path": "bridge/src/voice-stt.test.ts",
@@ -588,8 +603,13 @@
     },
     {
       "path": "docs/PUBLICATION.md",
-      "bytes": 8010,
-      "sha256": "2e1070224493bf18bb11a4702be40074b5293572ad25cf061dbdd960718e9bde"
+      "bytes": 9261,
+      "sha256": "1922cac8d7b9e72381a709c22888419913e255a84437be6e19341f9f0bb12b34"
+    },
+    {
+      "path": "docs/RECOVERY_GUARD.md",
+      "bytes": 6163,
+      "sha256": "cc7f0fba3782dfac137817b1285b9cad8c5f33e1899bd9f7417ab5b8f410042d"
     },
     {
       "path": "extras/article/README.md",
@@ -1526,5 +1546,15 @@
       "bytes": 23,
       "sha256": "012839e6ba7e5398d5dc5607e31d1a4ba7ee9bf51b1b3fce921583e98ee435e2"
     }
-  ]
+  ],
+  "published_file_count": 302,
+  "intended_file_count": 308,
+  "recovery_guard": {
+    "activation": "inactive; validation setup offline pending authorized fresh login and startup",
+    "scope": "provider-event cutoff, not original Apple message creation time; SDK preprocessing can precede bridge ingress",
+    "unit_tests": 125,
+    "assertions": 675,
+    "typecheck": "passed",
+    "fresh_provider_or_model_preflight": "not performed"
+  }
 }
