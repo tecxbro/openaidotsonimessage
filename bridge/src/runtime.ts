@@ -1,3 +1,4 @@
+import { RuntimeDiagnostics, type DiagnosticOperation } from "./runtime-diagnostics.ts";
 import { pendingMediaJobs, saveMediaJob, type MediaJob } from "./media-jobs.ts";
 import { queueDotWake } from "./dot-inbox.ts";
 import { recoverDurableState } from "./recovery.ts";
@@ -88,6 +89,7 @@ function resolveMessageEffect(name: string): string {
 
 
 const TYPING_STOP_TIMEOUT_MS = 5_000;
+type MaintenanceOperation = "outbound_drain" | "webhook_drain" | "cards_ready";
 type TypingStopTiming = { startedAt: string; settledAt: string; outcome: "completed" | "failed" | "timeout" };
 
 type MessageWithAppSession = Message & {
@@ -125,6 +127,8 @@ async function ensureAppCardSession(
 
 export class GpProofRuntime {
   private readonly config: Config;
+  private readonly diagnostics = new RuntimeDiagnostics();
+  private readonly maintenance = new Map<MaintenanceOperation, Promise<void>>();
   private readonly spaces = new Map<string, Space>();
   private handled = new Set<string>();
   private pending: InboundRecord[] = [];
@@ -137,6 +141,7 @@ export class GpProofRuntime {
   private flushing = false;
   private app: Awaited<ReturnType<typeof Spectrum>> | undefined;
   private stopped = false;
+  private consumingStream = false;
   private stopping?: Promise<void>;
   private commits: Promise<void> = Promise.resolve();
   private inboundTasks = new Map<string, Promise<void>>();
@@ -153,13 +158,44 @@ export class GpProofRuntime {
   /** Refresh startTyping while waiting for first text/reply. */
   private typingHeartbeats = new Map<string, ReturnType<typeof setInterval>>();
 
-  private readonly onStop = () => { void this.stop(); };
+  private readonly onSigint = () => { void this.stop("SIGINT").catch(() => {}); };
+  private readonly onSigterm = () => { void this.stop("SIGTERM").catch(() => {}); };
+
+  /** Every ignored task settles successfully after recording a safe diagnostic. */
+  private observeBackground(operation: DiagnosticOperation, work: () => Promise<unknown>): Promise<void> {
+    return Promise.resolve().then(work).then(
+      () => this.diagnostics.recovered(operation),
+      error => this.diagnostics.failure(operation, error),
+    );
+  }
+
+  /** Repeated timer ticks cannot overlap a maintenance pass or queue retries. */
+  private runMaintenance(operation: MaintenanceOperation, work: () => Promise<void>): Promise<void> {
+    if (this.stopped) return Promise.resolve();
+    const active = this.maintenance.get(operation);
+    if (active) return active;
+    const task = this.observeBackground(operation, work)
+      .finally(() => this.maintenance.delete(operation));
+    this.maintenance.set(operation, task);
+    return task;
+  }
 
   constructor(config: Config, private readonly connect: typeof Spectrum = Spectrum) {
     this.config = config;
   }
 
   async start(): Promise<void> {
+    this.diagnostics.lifecycle("runtime_starting");
+    try {
+      await this.startInner();
+      if (!this.stopped) this.diagnostics.lifecycle("provider_stream_eof");
+    } catch (error) {
+      this.diagnostics.failure(this.consumingStream ? "provider_stream" : "runtime_start", error);
+      throw new Error("runtime_start_failed");
+    }
+  }
+
+  private async startInner(): Promise<void> {
     await ensureDataDir();
     this.pending = await recoverDurableState();
     this.handled = await loadHandledIds();
@@ -173,68 +209,86 @@ export class GpProofRuntime {
       options: { logLevel: "error" },
     });
     this.app = app;
+    this.diagnostics.lifecycle("provider_connected");
     log("hosted iMessage provider connected");
     for (const job of await pendingMediaJobs()) {
       if (this.handled.has(job.messageId)) { await saveMediaJob({ ...job, state: "done" }); continue; }
       if (job.senderId !== this.config.authorizedSenderId) continue;
-      const task = this.resumeMedia(job).finally(() => this.inboundTasks.delete(job.messageId));
+      const task = this.observeBackground("media_recovery", () => this.resumeMedia(job)).finally(() => this.inboundTasks.delete(job.messageId));
       this.inboundTasks.set(job.messageId, task);
     }
 
     this.outboundTimer = setInterval(() => {
-      void this.drainOutbound();
+      void this.runMaintenance("outbound_drain", () => this.drainOutbound());
     }, 500);
     this.webhookTimer = setInterval(() => {
-      void this.drainWebhooks();
+      void this.runMaintenance("webhook_drain", () => this.drainWebhooks());
     }, 2000);
     this.cardsReadyTimer = setInterval(() => {
-      void this.drainCardsReadyWatchdog();
+      void this.runMaintenance("cards_ready", () => this.drainCardsReadyWatchdog());
     }, 3000);
-    void this.drainOutbound();
-    void this.drainWebhooks();
-    void this.drainCardsReadyWatchdog();
+    void this.runMaintenance("outbound_drain", () => this.drainOutbound());
+    void this.runMaintenance("webhook_drain", () => this.drainWebhooks());
+    void this.runMaintenance("cards_ready", () => this.drainCardsReadyWatchdog());
 
-    process.on("SIGINT", this.onStop);
-    process.on("SIGTERM", this.onStop);
+    process.on("SIGINT", this.onSigint);
+    process.on("SIGTERM", this.onSigterm);
 
+    this.consumingStream = true;
     for await (const [space, message] of app.messages) {
       const streamReceivedAt = new Date().toISOString();
       if (this.stopped) break;
       try {
         if (this.inboundTasks.has(message.id)) continue;
-        const task = this.onMessage(space, message, { streamReceivedAt }).catch(() => log(`inbound handler failed id=${message.id}`)).finally(() => this.inboundTasks.delete(message.id));
+        const task = this.observeBackground("inbound_handler", () => this.onMessage(space, message, { streamReceivedAt })).finally(() => this.inboundTasks.delete(message.id));
         this.inboundTasks.set(message.id, task);
-      } catch (err) {
-        log("inbound handler error");
+      } catch (error) {
+        this.diagnostics.failure("inbound_handler", error);
       }
     }
   }
 
-  async stop(): Promise<void> {
-    if (!this.stopping) this.stopping = this.stopInner();
+  async stop(trigger: "SIGINT" | "SIGTERM" | "requested" = "requested"): Promise<void> {
+    if (!this.stopping) {
+      this.diagnostics.lifecycle("stop_requested", trigger);
+      this.stopping = this.stopInner().then(
+        () => this.diagnostics.lifecycle("runtime_stopped"),
+        error => {
+          this.diagnostics.failure("runtime_stop", error);
+          throw new Error("runtime_stop_failed");
+        },
+      );
+    }
     return this.stopping;
   }
 
   private async stopInner(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
-    process.off("SIGINT", this.onStop);
-    process.off("SIGTERM", this.onStop);
+    process.off("SIGINT", this.onSigint);
+    process.off("SIGTERM", this.onSigterm);
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     if (this.outboundTimer) clearInterval(this.outboundTimer);
     if (this.webhookTimer) clearInterval(this.webhookTimer);
     if (this.cardsReadyTimer) clearInterval(this.cardsReadyTimer);
     for (const spaceId of [...this.typingTimers.keys()]) {
-      void this.stopTypingBestEffort(spaceId);
+      void this.observeBackground("typing_control", () => this.stopTypingBestEffort(spaceId));
     }
     await Promise.allSettled(this.inboundTasks.values());
-    await this.commit(() => this.flushPending());
-    // No next queued action may begin after stopped. Hold lifetime lock until
-    // the current drain has settled before closing its provider connection.
-    await this.outboundDrain;
+    let stopFailed = false;
+    let stopError: unknown;
+    try { await this.commit(() => this.flushPending()); }
+    catch (error) { stopFailed = true; stopError = error; }
+    // A failed final flush must not leave an open provider behind disabled
+    // timers/signal handlers. Still hold ownership until the active drain settles.
+    await Promise.allSettled([this.outboundDrain, ...this.maintenance.values()]);
     await Promise.allSettled(this.typingCleanupTasks);
     await Promise.allSettled(this.typingStops.values());
-    await this.app?.stop();
+    try { await this.app?.stop(); }
+    catch (error) { if (!stopFailed) stopError = error; stopFailed = true; }
+    // Teardown was attempted, but do not report a successful stop if persistence
+    // or provider shutdown failed. The caller retains the failed outcome.
+    if (stopFailed) throw stopError;
     log("stopped");
 
   }
@@ -295,7 +349,7 @@ export class GpProofRuntime {
     this.spaces.set(space.id, space);
     if (mediaJob) {
       await saveMediaJob(mediaJob);
-      void this.markReadBestEffort(message);
+      void this.observeBackground("read_control", () => this.markReadBestEffort(message));
     }
 
     let attachmentExtras:
@@ -431,7 +485,7 @@ export class GpProofRuntime {
       `queued inbound kind=${record.kind ?? "text"} id=${message.id} space=${space.id}`,
     );
     if (mediaJob) await saveMediaJob({ ...mediaJob, state: "done" });
-    else void this.markReadBestEffort(message);
+    else void this.observeBackground("read_control", () => this.markReadBestEffort(message));
     this.scheduleFlush();
   }
 
@@ -455,7 +509,7 @@ export class GpProofRuntime {
       : DEBOUNCE_MS;
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = null;
-      void this.commit(() => this.flushPending());
+      void this.observeBackground("batch_flush", () => this.commit(() => this.flushPending()));
     }, delay);
   }
 
@@ -494,7 +548,7 @@ export class GpProofRuntime {
       // Best-effort typing while Grok thinks.
       const spaceIds = [...new Set(messages.map((m) => m.spaceId))];
       if (!this.stopped) for (const spaceId of spaceIds) {
-        void this.startTypingBestEffort(spaceId);
+        void this.observeBackground("typing_control", () => this.startTypingBestEffort(spaceId));
       }
 
       await this.postWebhook(batchId);
@@ -550,7 +604,7 @@ export class GpProofRuntime {
       this.typingTimers.set(
         spaceId,
         setTimeout(() => {
-          void this.stopTypingBestEffort(spaceId);
+          void this.observeBackground("typing_control", () => this.stopTypingBestEffort(spaceId));
         }, TYPING_TIMEOUT_MS),
       );
       // iMessage typing fades; refresh until first text/reply or timeout.
@@ -666,14 +720,8 @@ export class GpProofRuntime {
 
   /** Durable Image Cards final-enqueue when PNGs land after FD released the turn. */
   private async drainCardsReadyWatchdog(): Promise<void> {
-    try {
-      const n = await drainCardsReady();
-      if (n > 0) {
-        log(`cards-ready enqueued stacks=${n}`);
-      }
-    } catch (err) {
-      log(`cards-ready drain error`);
-    }
+    const n = await drainCardsReady();
+    if (n > 0) log(`cards-ready enqueued stacks=${n}`);
   }
 
   private drainOutbound(): Promise<void> {

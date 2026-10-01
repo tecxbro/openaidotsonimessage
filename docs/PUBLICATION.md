@@ -6,7 +6,7 @@ Prepared on 2026-09-30 in an isolated publication checkout for `tecxbro/openaido
 
 - Source base: `tecxbro/photongrokbot` commit `8c710413c99a6fd8022727326ca682d267393953`
 - Implementation: the complete current working tree of `dot/full-runtime-20260930`, including dot-local inbox/wait/reply, recovery, timing, safe kernel locking, Moonshine scripts, and all existing rich-message modules
-- All 270 reusable source files from the implementation checkout are included. Production runtime code is byte-for-byte identical to that checkout. Publication changes are confined to README/navigation, documentation status and portable paths, ignore rules, one old manifest path, and one test-only message identifier replaced with an explicitly synthetic UUID
+- All 272 reusable source files from the implementation checkout are included. Production runtime code is byte-for-byte identical to that checkout. Publication changes are confined to README/navigation, documentation status and portable paths, ignore rules, one old manifest path, and one test-only message identifier replaced with an explicitly synthetic UUID
 - All preexisting adopter-template project skills and role documents are retained. These are reusable repository content, not the assistant's private notes or active conversation state
 - Article: Markdown, text, editable DOCX, final PDF, and the Python DOCX builder
 - Motion explainer: final 60-second 1080p/60fps MP4 (3,765,150 bytes), editable animation/project source, captions, storyboard, preview/poster, font assets/notices, quality records, and reusable rendering skill
@@ -49,3 +49,21 @@ Existing third-party license notices are retained, including the bundled Open Sa
 Inherited Live Mini illustrations have the upstream provenance caveat in [`live-mini/live-task-cards/docs/SOURCES.md`](../live-mini/live-task-cards/docs/SOURCES.md): independent third-party redistribution rights were not established for `study.png`, `hands.png`, and related reference imagery. They remain included as user-supplied project assets; this repository does not declare them newly open-licensed.
 
 The initial full-tree `git diff --cached --check` flags preexisting Markdown trailing-space line breaks and terminal blank lines in legacy templates. These are inherited documentation formatting, not a new source-code error; they are preserved rather than silently rewritten.
+
+
+## October 1 reliability update and upload status
+
+The reviewed follow-up contains rejected background drain/flush/stop tasks and adds sanitized lifecycle/error diagnostics. The exact approved runtime files are `bridge/src/runtime.ts`, `runtime-diagnostics.ts`, and `runtime-diagnostics.test.ts`; the runtime, issue, and verification guides have been refreshed. Production source matches the reviewed implementation. Documentation retains portable paths and publication-specific navigation. The runtime owner separately verified the reviewed source was loaded and provider-connected at 03:48:16.225 UTC on October 1, following a plain-pipe launch. No message was resent during activation. This is point-in-time activation evidence, not a durability or device-rendering guarantee.
+
+The source task reports **115 tests / 564 expectations / zero failures**, TypeScript and full offline preflight passing. Publication checks repeated the full 115-test / 564-expectation suite, TypeScript, and every offline preflight check successfully against this isolated checkout. An independent reviewer reran **12 focused tests / 60 expectations**. Tests use synthetic state and injected providers. Existing September 30 evidence above remains historical.
+
+The intended complete snapshot now comprises **304 files**, including the manifest. The remote publication has **298 files** after this text update; six large binary assets are pending upload:
+
+- `extras/video/photon-dot-imessage-final.mp4`
+- `extras/video/storyboard-preview.jpg`
+- `live-mini/live-task-cards/public/assets/study.png`
+- `live-mini/live-task-cards/references/01-dot-grid.png`
+- `live-mini/live-task-cards/references/02-segments.png`
+- `live-mini/live-task-cards/references/03-stages.png`
+
+The manifest records all audited local deliverable hashes and explicitly identifies those pending remote assets. The animation source is already published; remote MP4/preview/reference-image links will work once the remaining uploads complete. No credentials or runtime diagnostic journals are included.

@@ -1,6 +1,6 @@
 # Issues, fixes, and remaining boundaries
 
-This report separates original repository defects from the dot host adaptation. Base: `8c710413c99a6fd8022727326ca682d267393953`; local branch: `dot/full-runtime-20260930`. This describes the original implementation; `PUBLICATION.md` records its publication as a source snapshot.
+This report separates original repository defects from the dot host adaptation. Base: `8c710413c99a6fd8022727326ca682d267393953`; local branch: `dot/full-runtime-20260930`. Source publication is documented separately in `PUBLICATION.md`.
 
 ## Reused product
 
@@ -22,6 +22,7 @@ The implementation keeps the repository's Spectrum runtime, authenticated inboun
 
 | Issue | Repair / evidence |
 | --- | --- |
+| Startup/interval drain, deferred-flush, and signal-stop promises had no rejection observer | Inherited at original base `8c710413`; fixed background boundaries, single-flight maintenance, sanitized durable diagnostics and error-preserving shutdown teardown. Real Bun/storage-failure regressions pass. This is not evidence of the cause of an earlier live exit |
 | A Promise chain did not lock separate enqueue/runtime processes | Cross-process file lock around JSON-store mutation; ten concurrent process enqueues preserve all actions |
 | Inbound IDs could be marked handled before durable work; debounce state cleared before batch persisted | Journal-first commit, batch-before-clear ordering, startup reconciliation from inbound and unread records |
 | A second process could own the same queue/provider instance | Lifetime data-directory lock, explicit startup wrapper and graceful release |
@@ -71,10 +72,22 @@ These were found while reviewing this local adaptation; they are not presented a
 
 The independent review cleared the corrected source for a controlled text/read/audio cutover after updated tests. Rich phone behavior remains subject to the separate checks listed above.
 
-## Current running status
+## September 30 historical running status
 
 The full repository runtime replaced the proof listener on 2026-09-30 after the old process exited successfully. The full runtime started at 07:00:19 UTC and reported its hosted provider connected, with empty initial inbox/outbox. A dedicated active task owns its sole connection and local inbox processing. At 07:21 UTC the full runtime received the authorized user’s fresh greeting, marked it read, sent its once-only automatic greeting with a confetti request, and received a matching provider read receipt at 07:21:17 UTC. A subsequent message also completed the active dot-authored claim/enqueue path: provider acceptance recorded at 07:23:33.952 UTC (legacy sentAt, after typing cleanup) and its matching read receipt at 07:23:37.254 UTC. A real phone voice note and visual rich-message rendering remain unverified. The active-task loop exhibited noticeable handoff latency; the repo-native one-shot inbox wait and direct enqueue now avoid extra receive/send relays, with individual subsequent observations described above. The reviewed timing/receipt fixes are now loaded in one replacement runtime on the unchanged private data directory and existing project. The runtime owner confirmed the prior process had exited before starting the replacement, which explicitly reported provider-connected. The prior exit was code 1 with no observed graceful-shutdown log; its cause was still being checked at this snapshot. A graceful old exit is not claimed. No simultaneous second connection or state reset was introduced. Fresh stage-timed live speed is not yet measured. No unattended activation or public Live Mini hosting is claimed.
 
 The later lock-helper process-group fix is included in this full source package and loaded in the final connected replacement. The earlier intermediate transition was Ctrl+C/exit-code-1 at 13:37:23 UTC, replacement creation at 13:38:05 UTC, and provider-connected log observed at 13:38:29 UTC.
 
 For the final activation, the prior runtime received Ctrl+C through its owned PTY and exited at 14:03:06 UTC with code 1 and only `^C` output observed. Direct PID signaling was skipped because the expected owner PID was not visible and matching in that shell namespace. Graceful old cleanup and the exit-code-1 cause remain unproven. Only after confirming that exit, the sole replacement was created at 14:03:25 UTC and explicitly reported provider-connected at 14:03:46 UTC. Final reviewed source predates the start. The same project, approved credentials and private data were reused, with no reset, reseed or simultaneous second provider connection. The isolated lock flaw is not evidence that live provider clients overlapped. No new measured speed, phone voice or rich-display proof is claimed.
+
+## October 1 reliability follow-up
+
+The background-promise defect above was verified in original upstream source, not attributed to the dot adaptation. The new containment patch is independently reviewed and tested: **115 tests / 564 assertions / zero failures** plus TypeScript and preflight. A review of the initial containment proposal identified that simply swallowing a failed stop could leave a provider open after a final-flush failure. Before activation, the patch was corrected to wait for active sends, attempt provider teardown, retain durable pending input, and report failure without a false successful-stop marker.
+
+`runtime-diagnostics.jsonl` records only fixed lifecycle/operation names, timestamp, process/run identity, allowlisted error codes, and suppression/recovery counts. It never serializes raw errors, stacks, causes, message/provider IDs, payloads, paths or credentials. Repeated failures are rate-limited; failed diagnostic writes have a contained, rate-limited fixed stderr warning. The operation-recovered event means the operation later ran successfully, not that every earlier failed message was automatically recovered. Corrupt state is never reset, and sent/unknown actions are never replayed by this fix.
+
+At the source handoff, activation and publication were pending coordination; the source-writing task left the live runtime and inbox owner untouched. The later replacement used plain pipes, but session lifetime remains a separate hosting concern. Fresh exec sessions can have different PID namespaces, so an empty/mismatched `ps` result cannot prove another session's process died; use the owned process/session outcome and a contention probe on the existing permanent lock as appropriate. This patch does not explain the prior exits or establish unattended host persistence.
+
+The earlier loss of session handles left prior runtime liveness uncertain; absence from a fresh process namespace is not proof of exit. Ownership must be re-established before replacement. The runtime owner subsequently verified the reviewed patch at startup as follows.
+
+At **03:48:10.185 UTC on 2026-10-01**, the runtime owner observed `runtime_starting`; `provider_connected` followed at **03:48:16.225 UTC**. The loaded runtime/diagnostics source hashes matched the approved freeze, and the replacement used plain pipes. No message was resent during this activation. This verifies the reviewed patch was loaded and connected at that point in time; it is not an uninterrupted-uptime guarantee, a new speed measurement, or phone/rich-media verification.

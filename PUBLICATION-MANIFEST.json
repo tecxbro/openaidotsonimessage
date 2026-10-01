@@ -1,6 +1,15 @@
 {
-  "generated_utc": "2026-09-30",
+  "generated_utc": "2026-10-01",
   "upstream_base": "8c710413c99a6fd8022727326ca682d267393953",
+  "manifest_scope": "Complete audited local publication; pending_remote_assets are not yet present on main",
+  "pending_remote_assets": [
+    "extras/video/photon-dot-imessage-final.mp4",
+    "extras/video/storyboard-preview.jpg",
+    "live-mini/live-task-cards/public/assets/study.png",
+    "live-mini/live-task-cards/references/01-dot-grid.png",
+    "live-mini/live-task-cards/references/02-segments.png",
+    "live-mini/live-task-cards/references/03-stages.png"
+  ],
   "files": [
     {
       "path": ".gitignore",
@@ -39,8 +48,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 4369,
-      "sha256": "bee864049a1a4a3d365d6f9616ff73cea0ba26985b091e0905e1db81d870badb"
+      "bytes": 4869,
+      "sha256": "b38ce732b175f13099c5da3835a7b0ab3394bcec87a3f320e40f4954a348587e"
     },
     {
       "path": "agents/README.md",
@@ -483,9 +492,19 @@
       "sha256": "1bc74341dcf15631298ae8ecceb755c51489deb0747df8848a74771ad412a444"
     },
     {
+      "path": "bridge/src/runtime-diagnostics.test.ts",
+      "bytes": 16611,
+      "sha256": "5cfe57374668bdb0fd27059feb5520dbe036c4d868c6dfb5617068feabe92a02"
+    },
+    {
+      "path": "bridge/src/runtime-diagnostics.ts",
+      "bytes": 3953,
+      "sha256": "dc2d36c221e6c889c89ea83bd3f2519c322520233839477b7834f40daa34dfa3"
+    },
+    {
       "path": "bridge/src/runtime.ts",
-      "bytes": 37483,
-      "sha256": "19382fb1f290649784b65c6fdabe7a6e4de08e4f24736c32b1f1b12ab5fc34dc"
+      "bytes": 40596,
+      "sha256": "c535c1d75c24416738d885d71a176d71aabaccc289d1a8cfd12e9cda6236a774"
     },
     {
       "path": "bridge/src/send-hello.ts",
@@ -549,8 +568,8 @@
     },
     {
       "path": "docs/BUILD_VERIFICATION.md",
-      "bytes": 13356,
-      "sha256": "a70093013921cd3a2108bdbb9defa7821d58c493272e25c559bc0ea5fd0c071e"
+      "bytes": 16401,
+      "sha256": "73e6b837dcc4d846f94198e99dc0751676f7711f6b3e93bd84ffe695156c49ed"
     },
     {
       "path": "docs/DOT_ROLES.md",
@@ -559,18 +578,18 @@
     },
     {
       "path": "docs/DOT_RUNTIME.md",
-      "bytes": 30845,
-      "sha256": "ec976f02767e73737371f9eaef0fb834eb0e8537fcd66e867015e577b1e4fdba"
+      "bytes": 34166,
+      "sha256": "d1b6da999efc62511ab63e6782cc8387ccf549e65a0c66f3657cb7a692c1607b"
     },
     {
       "path": "docs/ISSUES_AND_FIXES.md",
-      "bytes": 13845,
-      "sha256": "9a6a7f16227e2178a36db5f89bdebd8665e68957aa4b950ceac0c19ba8c693dd"
+      "bytes": 16756,
+      "sha256": "b6c82fa861d40a2a5329b7b48372de5709c07cd522f3e6ce055ed5038919c1f1"
     },
     {
       "path": "docs/PUBLICATION.md",
-      "bytes": 5957,
-      "sha256": "42e7b5d978a709b6f1feb14d4e88e15d8a3c727814d51b2248a0efbd7c2282a4"
+      "bytes": 8010,
+      "sha256": "2e1070224493bf18bb11a4702be40074b5293572ad25cf061dbdd960718e9bde"
     },
     {
       "path": "extras/article/README.md",

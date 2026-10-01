@@ -2,7 +2,7 @@
 
 Full reusable source for the dot adaptation of [tecxbro/photongrokbot](https://github.com/tecxbro/photongrokbot), plus the setup guide, issue and verification reports, architecture article, and editable motion explainer.
 
-This publication snapshots the cloud implementation from 30 September 2026. The bridge receives iMessages through Photon Spectrum, saves durable batches, lets an **active dot task** claim and process them, and sends authorized replies through the same connection. It does not create automatic dot activation or include an external model API.
+This publication snapshots the cloud implementation from 30 September 2026, with the reviewed background-task reliability update from 1 October 2026. The bridge receives iMessages through Photon Spectrum, saves durable batches, lets an **active dot task** claim and process them, and sends authorized replies through the same connection. It does not create automatic dot activation or include an external model API.
 
 ## Start here
 
@@ -13,6 +13,8 @@ This publication snapshots the cloud implementation from 30 September 2026. The 
 - [Role responsibilities](docs/DOT_ROLES.md)
 - [Architecture article](extras/article/dot-imessage-architecture.md), [editable Word version](extras/article/dot-imessage-architecture.docx), and [PDF](extras/article/dot-imessage-architecture.pdf)
 - [60-second motion explainer](extras/video/photon-dot-imessage-final.mp4), [storyboard](extras/video/storyboard-and-caption-script.md), and [editing/rendering guide](extras/video/RENDER.md)
+
+The source, article exports, fonts, poster, and smaller artwork are published. Six larger media files, including the final MP4 and storyboard preview, are still pending upload; their audited sizes/hashes remain in the publication manifest. See [current publication status](docs/PUBLICATION.md#october-1-reliability-update-and-upload-status).
 
 ## What is included
 
@@ -40,7 +42,7 @@ Follow the runtime guide to configure private paths, install Moonshine, run pref
 
 ## Verification boundaries
 
-The full implementation previously passed 103 registered bridge tests / 504 expectations plus its legacy assertions, TypeScript and complete model-integrity preflight. Live Mini passed 123 application and 7 skill tests. See the publication report for the checks repeated on this exact snapshot.
+The latest reviewed implementation passes 115 registered bridge tests / 564 expectations plus its legacy assertions, TypeScript and complete model-integrity preflight. The 12 focused diagnostics tests / 60 expectations also passed independent review. Live Mini passed 123 application and 7 skill tests. See the publication report for the checks repeated on this exact snapshot.
 
 A dot-authored text round trip, provider acceptance, and correlated read receipt were observed on the original authorized setup. Real-phone voice and rich-message rendering still need end-to-end checks. Live Mini has no public deployment in this publication. The bridge requires both a running runtime and an active dot task to respond.
 

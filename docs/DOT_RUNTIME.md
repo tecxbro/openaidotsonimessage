@@ -74,7 +74,7 @@ bun test
 bun run start:dot
 ```
 
-For a background process, invoke the entry file directly so the recorded PID belongs to Bun rather than a package-script wrapper:
+For a tool-managed replacement, use plain pipes (`tty:false`) rather than a PTY. This reduces terminal-related risk; it does not create a durable host or supervisor. For a shell-managed background process, invoke the entry file directly so the recorded PID belongs to Bun rather than a package-script wrapper:
 
 ```bash
 nohup bun run src/start-dot.ts >"$BRIDGE_DATA_DIR/runtime.log" 2>&1 &
@@ -98,6 +98,15 @@ ps -p "$RUNTIME_PID" -o pid=,etime=,args=
 # Continue only after confirming this is this checkout's start-dot.ts process
 kill -TERM "$RUNTIME_PID"
 ```
+
+Exec sessions may have separate PID namespaces. If the recorded PID is not visible and matching, do not signal a guessed process or infer that the old runtime is dead. Consult the owned process/session result and, where the shared filesystem is available, probe the existing permanent lock without deleting it:
+
+```bash
+flock -n -E 75 "$BRIDGE_DATA_DIR/.runtime-lock.lock" true
+# 75: lock held; 0: this momentary probe acquired/released it
+```
+
+Lock contention is ownership evidence, not provider readiness or a durable-host guarantee. Confirm the old process/session has ended before a replacement; retain the same private state and the unknown-send quarantine.
 
 `SIGTERM`/`SIGINT` call `stop()`, clear timers, wait for inbound handlers, flush buffered input, and stop Spectrum. Shutdown can wait on a hung provider send or media operation. Confirm the process exits before restarting; never start a replacement while the old runtime remains alive. Avoid `SIGKILL`; a send interrupted at any point can have an unknown outcome. Do not delete a live lock to start a competing runtime. The fixed source isolates the flock helper from foreground terminal signals using its own process group, while retaining the parent-owned stdin/EOF lifetime. The lock uses a permanent kernel-flock inode; the OS releases it when its owner process/pipe closes. Never delete or rename a `.lock` file to recover it. Owner metadata is separate. For older snapshots without this fix, group Ctrl+C/SIGTERM can also terminate the helper prematurely; confirmed old-process exit remains mandatory. This is local-host exclusion, not a distributed service lease or process supervisor. No reboot/startup service is installed by these commands.
 
@@ -203,6 +212,7 @@ webhook-pending.json                           retryable host-notice work
 dot-inbox/<batchId>.json                       local notice containing batchId only
 batch-claims/<batchId>.json                    owner, lease, processing completion
 outbound-queue.json, outbound.jsonl            queued actions and audit records
+runtime-diagnostics.jsonl                      sanitized lifecycle/background errors
 receipts.jsonl                                actual provider read events
 receipt-targets.json                          target receipts, including early read events
 conversation-context.json                     verified sender and line by original space
@@ -239,6 +249,16 @@ New outbound records carry `dispatchStartedAt` (before storage/space lookup), `p
 Accepted status and the provider message ID are persisted before ancillary typing cleanup. Cleanup is detached from queue progress, single-flight per space, tracked during shutdown and bounded to five seconds. Its content-free `outbound.jsonl` event is `{event:"typing_cleanup", id, startedAt, settledAt, outcome}`; outcome is `completed`, `failed` or `timeout`. A timeout bounds bridge bookkeeping but cannot cancel an already-issued SDK control, which has no cancellation parameter. The provider is closed on runtime shutdown. This does not bound other provider sends or media work.
 
 No debounce default or prompt changed. Historical records cannot retroactively separate ingress/storage or send/cleanup time. The reviewed timing implementation is loaded in the replacement runtime. Its owner confirmed the prior process had exited before starting the sole replacement on unchanged private state; the prior exit was code 1 with no observed graceful-shutdown log, so it is not described as graceful. Fresh stage-timed live performance remains unmeasured.
+
+## Local lifecycle and background-error diagnostics
+
+The approved October 1 source update writes `runtime-diagnostics.jsonl` under `BRIDGE_DATA_DIR` with append/fsync and mode 0600. Records contain a timestamp, process ID, random run ID, and fixed lifecycle/operation fields. No message/provider IDs, raw errors, stack/cause text, payloads, filesystem paths or credentials are copied into this diagnostic journal. Existing conversation stores remain private separately.
+
+Lifecycle events distinguish startup, provider connection, natural iterator EOF, requested shutdown and successful shutdown. Failure records distinguish startup from an actual iterator failure. Background outbound/webhook/cards maintenance is single-flight and rejection-contained. Deferred flush, inbound work and signal-stop launches also observe their promise outcomes. A failed final flush still waits for active sends and attempts provider teardown; it remains a failed stop and never emits a false successful-stop event.
+
+Repeated failure records are limited to one per operation per 60 seconds, with suppressed counts and a later recovery event. Diagnostic-storage failures cannot become another rejected task; a fixed stderr fallback is independently rate-limited. No global rejection handler hides unrelated failures, no corrupt store is reset, and no unknown/sent item is automatically replayed. A recovery event describes a subsequent successful operation, not automatic resolution of every earlier input.
+
+This update is source-approved and tested but awaits the coordinated runtime replacement. No daemon or extra reconnect loop was added; SDK reconnection and external session/host lifetime remain separate concerns. Its presence does not establish why a previous live process exited.
 
 ## Existing features and where to edit
 
@@ -301,14 +321,18 @@ npm run build
 
 The bridge test preload uses a temporary `BRIDGE_DATA_DIR`; never point ad hoc test scripts at the live inbox. For a fresh acceptance run, verify claim contention and lease refresh, duplicate enqueue, interruption recovery, unknown-send quarantine, graceful stop/restart, and the feature path you changed. Then separately verify an authorized inbound message, its actual agent-authored response in the same conversation, and requested rich-message/voice rendering on the device.
 
-Outstanding boundaries: automatic dot activation; a public Live Mini host and trusted real-task milestone wiring; browser/device visual QA; production supervision and backup policy. No push, public deployment, or production readiness is claimed here. Retain the existing private runtime state when editing code; a new empty data directory resets deduplication and the setup-greeting marker.
+Outstanding boundaries: automatic dot activation; a public Live Mini host and trusted real-task milestone wiring; browser/device visual QA; production supervision and backup policy. Source publication is documented in `PUBLICATION.md`; no public Live Mini deployment or production-readiness guarantee is claimed here. Retain the existing private runtime state when editing code; a new empty data directory resets deduplication and the setup-greeting marker.
 
 ## Handoff freeze status: 2026-09-30 07:33 UTC
 
 The old minimal listener exited successfully before the full runtime started. The full runtime emitted its hosted-provider-connected event at startup (07:00:19 UTC) and is owned by one active reader. Initial queues were empty; only already-handled proof IDs were migrated. At 07:21 UTC, a fresh authorized phone greeting reached this runtime, was marked read, and triggered the once-only automatic “it’s dot here” greeting with a confetti effect request. Spectrum accepted it and a matching provider read receipt arrived at 07:21:17 UTC. A subsequent message was claimed, answered by dot and submitted through `dot-agent enqueue`; the bridge recorded provider acceptance at 07:23:33.952 UTC (legacy sentAt, after typing cleanup) and its matching provider read receipt arrived at 07:23:37.254 UTC. This verifies both the automatic greeting and active dot-authored queue transport/read paths. Phone-originated voice and visual rich-message rendering remain pending. The active-task loop showed noticeable handoff latency (approximately 42 seconds in receive-to-forward and 26 seconds in reply-forward handling for the observed exchange). Dot now uses the repository’s one-shot `dot-agent wait` command to await, claim and read work directly, then enqueues its response directly. The host-side wait and direct-reply commands remove extra forwarding/action-file steps without requiring a provider restart. The later timing/receipt runtime patch was activated through the confirmed-exit replacement described above. Subsequent individual direct-wait observations and the legacy timestamp caveats are documented in BUILD_VERIFICATION.md; no general speed guarantee is established. No additional provider client was introduced. See [BUILD_VERIFICATION.md](BUILD_VERIFICATION.md) and [ISSUES_AND_FIXES.md](ISSUES_AND_FIXES.md) for the exact machine-tested evidence and remaining limits.
 
-### Latest lock-source activation status
+### September 30 historical lock-source activation status
 
 Both the timing/receipt patch and the later process-group isolation fix in `file-lock.ts` are loaded in the sole connected replacement. The prior runtime exited at 14:03:06 UTC after Ctrl+C through its owned PTY, with exit code 1 and only `^C` output observed. Direct PID signaling was skipped because the expected owner PID was not visible and matching in that shell namespace. Its graceful cleanup and exit-code-1 cause remain unproven.
 
 After that confirmed exit, the replacement was created at 14:03:25 UTC and its explicit provider-connected log was observed at 14:03:46 UTC. The reviewed source predates the new start. The same project, approved credentials and private data directory were reused, with no reset, reseed or simultaneous additional provider connection. Isolated SIGINT/SIGTERM/parent-death tests pass, but no new live speed or rich-device-rendering claim follows from startup alone.
+
+### October 1 point-in-time reliability activation
+
+At **03:48:10.185 UTC on 2026-10-01**, the runtime owner observed `runtime_starting`; `provider_connected` followed at **03:48:16.225 UTC**. The loaded runtime/diagnostics source hashes matched the approved freeze, and the replacement used plain pipes. No message was resent during this activation. This verifies the reviewed patch was loaded and connected at that point in time; it is not an uninterrupted-uptime guarantee, a new speed measurement, or phone/rich-media verification.

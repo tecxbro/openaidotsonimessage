@@ -1,11 +1,11 @@
 # Local build verification
 
-Implementation snapshot: 2026-09-30, 14:06 UTC. See `PUBLICATION.md` for subsequent publication-only checks. This is verification of the local dot integration, not a remote deployment or physical-device certification.
+Source snapshot: 2026-10-01, 03:43 UTC; activation evidence updated at 03:48 UTC. This is verification of the local dot integration, not a remote deployment or physical-device certification.
 
 ## Proven locally
 
 - Bridge: Bun 1.4.2, official `@spectrum-ts/core` and `@spectrum-ts/imessage` 12.10.1, TypeScript check passes
-- `bun test`: 103 registered tests / 504 expectations pass, zero failures, plus the repository's existing top-level assertion suites
+- `bun test`: 115 registered tests / 564 expectations pass, zero failures, plus the repository's existing top-level assertion suites
 - `bun run preflight`: SDK, hosted provider import, kernel flock, ffmpeg, ffprobe, Python/Moonshine import and every required model file pass
 - Multi-process queue contention, exclusive claim, idempotent retries, changed-content rejection, journal recovery, unknown-send quarantine, receipt correlation including early events, one-time confetti, preserved follow-up text, non-blocking media, graceful stop, and read-only receipt handling tested without opening a provider connection
 - Documented dot CLI smoke: pending/status/read/claim/lease renewal/enqueue/idempotency/completion and negative owner/space/claim guards pass using synthetic private state
@@ -14,6 +14,7 @@ Implementation snapshot: 2026-09-30, 14:06 UTC. See `PUBLICATION.md` for subsequ
 - Nine timing/receipt regressions pass: pre-storage stream timing, retained/legacy media times, early reads with slow cleanup, never-resolving cleanup, rejected cleanup/error sanitization, unknown/undefined sends, reply/rich-send acceptance, best-effort typing without fabricated return evidence, and app-edit/no-session outcomes
 - Sixteen direct-stdin-reply tests pass: existing live owner required, original-space inference, durable enqueue before completion, safe completed retry, unfinished idempotent retry, changed-content rejection, routing/target guards, malformed stdin, invalid/expired claims, output validation, corrupt state, interrupted audit append and exact package-script invocations with/without the optional separator
 - Three real isolated process-group lock regressions pass: SIGINT and SIGTERM keep a contender blocked throughout a held owner shutdown until explicit release; parent death after interruption still releases the helper through stdin EOF. All three reproduced early lock release before the targeted fix
+- Twelve background/lifecycle diagnostics tests pass: fixed-schema privacy and repeat suppression, failed diagnostic writes, real Bun timer-rejection survival/recovery, corrupt outbound/webhook store preservation, single-flight recovery without replaying sent/unknown items, deferred-flush recovery on new input, normal EOF, startup-versus-stream failure classification, and shutdown teardown after final-flush failure
 - `git diff --check` passes
 
 ## Moonshine: actual speech, not a placeholder
@@ -50,7 +51,7 @@ No public deployment, storage account, persistent credentials, or paid service w
 - Audio, polls, effects, grouped cards, app sheets and Live Mini still need end-to-end phone checks on this runtime. Local builders/mocks cannot prove the Messages UI rendering
 - Live Mini needs an authorized stable HTTPS deployment and private durable storage before a phone can use it
 - Task-scoped worker responsibilities are documented; no six permanent autonomous bots or hidden replacement model are running
-- At this implementation snapshot, no remote push, merge, public deployment, background startup service, or billing change was part of the build; source publication is documented separately
+- Source publication is documented separately in `PUBLICATION.md`; this build does not merge, publicly deploy, install a startup service, or change billing
 
 ## Live cutover status
 
@@ -84,10 +85,26 @@ Three isolated subprocess regressions failed on the old helper and pass on the f
 
 This defect does not establish the cause of the earlier exit code 1. The observed previous exit followed a Ctrl+C at 13:37:23 UTC with only `^C` output and no graceful-shutdown or runtime-failure marker. The replacement was created at 13:38:05 UTC and its provider-connected log was observed at 13:38:29 UTC. Old-process exit was confirmed first, preventing actual overlap during that replacement.
 
-## Final deployment evidence
+## September 30 deployment evidence
 
 The prior runtime received Ctrl+C through its owned PTY and exited at **14:03:06 UTC**, with exit code 1 and only `^C` output observed. Direct PID signaling was skipped because the expected owner PID was not visible and matching in that shell namespace. No graceful-shutdown marker was observed; graceful cleanup and the cause of exit code 1 remain unproven.
 
 Only after confirming that exit, the owner created the sole replacement at **14:03:25 UTC**. Its explicit hosted-provider-connected log was observed at **14:03:46 UTC**. The reviewed final lock-helper source predates this start, so both the timing/receipt fix and process-group-isolation fix are loaded. The existing project, approved credentials and private data directory were reused, with no reset, reseed, test send, or simultaneous extra provider connection.
 
 This final step changed deployment evidence only. The **103 tests / 504 assertions / zero failures**, TypeScript and preflight results stand; no code was edited during this documentation/package refresh. A fresh stage-timed live speed measurement, real phone voice note and visual rich-message rendering remain unverified.
+
+## October 1 background-task reliability update (reviewed and activated)
+
+Comparison against original base `8c710413c99a6fd8022727326ca682d267393953` confirms that startup/interval outbound and webhook drains, the deferred batch flush, and the signal-stop callback already launched unobserved promises upstream. A rejected background task could escape the awaited startup boundary; an independent isolated Bun 1.4.2 probe demonstrated unhandled rejection exiting an otherwise active process. This establishes a real inherited failure path, not the cause of any previously observed live exit.
+
+The reviewed patch contains background rejections, keeps maintenance single-flight, and records fixed-schema, fsynced local diagnostics. Repeated failures are rate-limited per operation. A failed final flush still waits for active sends and attempts provider teardown; failed persistence or provider shutdown does not produce a successful-stop event. Setup failures after connection and actual stream-iterator failures have separate classifications.
+
+Final aggregate: **115 tests / 564 assertions / zero failures**, including the existing top-level assertion suites. TypeScript, full local preflight, and diff checks pass. Independent review reran the **12 focused tests / 60 assertions** and approved the final source. All tests used isolated state and injected providers; no provider connection, live claim, live send or runtime restart was performed during this change.
+
+At the source handoff, the last verified runtime used the previous implementation and its liveness was uncertain. The subsequent coordinated replacement used plain pipes (`tty:false`) as a terminal-risk reduction; that is not a durable-host guarantee. No daemon, supervisor, new credential, transport, automatic restart, or separate reconnect loop was added. The SDK retains responsibility for transport reconnection. Prior exit causes, phone-originated voice, and visual rich-message rendering remain unproven.
+
+The source-writing task did not probe, stop, start or connect to the live provider. Runtime ownership and activation were coordinated separately after that handoff.
+
+### October 1 point-in-time activation evidence
+
+At **03:48:10.185 UTC on 2026-10-01**, the runtime owner observed `runtime_starting`; `provider_connected` followed at **03:48:16.225 UTC**. The loaded runtime/diagnostics source hashes matched the approved freeze, and the replacement used plain pipes. No message was resent during this activation. This verifies the reviewed patch was loaded and connected at that point in time; it is not an uninterrupted-uptime guarantee, a new speed measurement, or phone/rich-media verification.
