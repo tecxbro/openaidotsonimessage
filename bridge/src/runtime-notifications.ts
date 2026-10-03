@@ -2,6 +2,18 @@
 import { watch } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 
+const outboundListeners = new Set<() => void>();
+/** Supplements the directory watcher for runtime-owned producers. */
+export function subscribeOutboundPublication(listener: () => void): () => void {
+  outboundListeners.add(listener);
+  return () => { outboundListeners.delete(listener); };
+}
+export function notifyOutboundPublication(): void {
+  for (const listener of outboundListeners) {
+    try { listener(); } catch { /* Advisory notification cannot fail enqueue. */ }
+  }
+}
+
 export async function watchPublicationDirectory(
   directory: string,
   matches: (name: string) => boolean,

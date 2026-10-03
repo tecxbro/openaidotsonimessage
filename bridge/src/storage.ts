@@ -1,4 +1,7 @@
-import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { atomicWriteFile } from "./durable-file.ts";
+import { notifyOutboundPublication } from "./runtime-notifications.ts";
+import { recordLatency } from "./latency.ts";
+import { mkdir, open, readFile, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { withFileLock } from "./file-lock.ts";
@@ -39,15 +42,8 @@ function withLock<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-async function atomicWrite(path: string, body: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(tmp, body, { encoding: "utf8", mode: 0o600 });
-  await rename(tmp, path);
-}
-
 async function atomicWriteJson(path: string, value: unknown): Promise<void> {
-  await atomicWrite(path, `${JSON.stringify(value, null, 2)}\n`);
+  await atomicWriteFile(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 async function readJson<T>(path: string, fallback: T): Promise<T> {
@@ -443,13 +439,15 @@ export async function enqueueOutbound(
       const hash = createHash("sha256").update(stableJson(input)).digest("hex");
       const legacyHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
       if (existing.length) {
-        if (existing.some(item => item.requestHash && item.requestHash !== hash && item.requestHash !== legacyHash)) throw new Error("idempotency_key_content_mismatch");
+        if (existing.some(item => item.requestHash && item.requestHash !== hash && item.requestHash !== legacyHash && item.canonicalRequestHash !== hash)) throw new Error("idempotency_key_content_mismatch");
         return existing;
       }
-      for (const item of items) { item.requestId = requestId; item.requestHash = hash; }
+      for (const item of items) { item.requestId = requestId; item.requestHash = legacyHash; item.canonicalRequestHash = hash; }
     }
     file.items.push(...items);
     await atomicWriteJson(OUTBOUND_QUEUE_PATH, file);
+    for (const item of items) recordLatency("outboxCommittedAt", item.id);
+    notifyOutboundPublication();
     for (const item of items) {
       await appendJsonl(OUTBOUND_LOG, { event: "enqueue", item });
     }

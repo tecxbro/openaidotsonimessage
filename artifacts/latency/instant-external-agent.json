@@ -1,0 +1,40 @@
+{
+  "fixture": "local instant agent and provider; no network or device",
+  "agentProducer": "separate CLI process",
+  "measuredAt": "2026-10-03T00:26:57.447Z",
+  "runtime": "Bun 1.4.2",
+  "platform": "darwin",
+  "warmupSamples": 10,
+  "connections": 1,
+  "substantiveResponses": 110,
+  "inputCommitToPublication": {
+    "samples": 100,
+    "p50Ms": 14.602,
+    "p95Ms": 21.644,
+    "maximumMs": 34.333
+  },
+  "publicationToClaim": {
+    "samples": 100,
+    "p50Ms": 52.469,
+    "p95Ms": 59.045,
+    "maximumMs": 78.813
+  },
+  "claimToAnswerSubmission": {
+    "samples": 100,
+    "p50Ms": 18.81,
+    "p95Ms": 23.531,
+    "maximumMs": 33.023
+  },
+  "outboxCommitToSdkInvocation": {
+    "samples": 100,
+    "p50Ms": 71.128,
+    "p95Ms": 77.95,
+    "maximumMs": 89.515
+  },
+  "sdkInvocationToFakeReturn": {
+    "samples": 100,
+    "p50Ms": 0.079,
+    "p95Ms": 0.1,
+    "maximumMs": 0.122
+  }
+}

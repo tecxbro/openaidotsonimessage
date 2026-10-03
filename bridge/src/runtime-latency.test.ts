@@ -35,7 +35,7 @@ const message = (id: string): Message => ({ id, platform: 'imessage', direction:
 function space(send = async () => ({ id: 'accepted' })): Space {
   return { id: 'space', type: 'dm', phone: 'line', send, startTyping: async () => {}, stopTyping: async () => {} } as unknown as Space;
 }
-async function runningFixture(s: Space) {
+async function runningFixture(s: Space, disablePolling = true) {
   let finish!: () => void;
   const connect = (async () => ({
     messages: { async *[Symbol.asyncIterator]() { await new Promise<void>(resolve => { finish = resolve; }); } },
@@ -46,7 +46,8 @@ async function runningFixture(s: Space) {
   probe.spaces.set('space', s);
   const running = runtime.start();
   await until(async () => Boolean(finish));
-  clearInterval(probe.outboundTimer); clearInterval(probe.cardsReadyTimer); clearInterval(probe.webhookTimer);
+  if (disablePolling) clearInterval(probe.outboundTimer);
+  clearInterval(probe.cardsReadyTimer); clearInterval(probe.webhookTimer);
   await Promise.all(probe.maintenance.values());
   return { runtime, probe, running };
 }
@@ -146,5 +147,16 @@ test('complete card publication wakes final enqueue without maintenance or stabi
       expect(consumed.cards).toEqual(marker.cards);
     }
     expect(calls).toBe(2);
+  } finally { await f.runtime.stop(); await f.running; }
+});
+
+ test('missed publication notifications recover through the retained periodic scan', async () => {
+  let calls = 0;
+  const f = await runningFixture(space(async () => ({ id: `recovered-${++calls}` })), false);
+  try {
+    for (const close of f.probe.notificationClosers.splice(0)) close();
+    await enqueueOutbound({ spaceId: 'space', text: 'missed notification' });
+    await until(async () => (await loadOutboundQueue()).every(item => item.status === 'sent'));
+    expect(calls).toBe(1);
   } finally { await f.runtime.stop(); await f.running; }
 });

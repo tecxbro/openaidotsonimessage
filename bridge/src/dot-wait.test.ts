@@ -137,5 +137,18 @@ test('a guard closing after lock acquisition prevents a claim mutation', async (
   expect(performance.now() - start).toBeLessThan(150);
   expect((await pendingDotBatches()).map(batch => batch.batchId)).toEqual(['z-fresh']);
   expect(await readdir(DOT_INBOX_DIR)).toEqual(['z-fresh.json']);
+  const bootstrapStart = performance.now();
+  expect((await waitForDotBatch('owner', { timeoutMs: 5 })).status).toBe('timeout');
+  expect(performance.now() - bootstrapStart).toBeLessThan(150);
+  expect(await readBatchClaim('z-fresh')).toBeNull();
   expect((await waitForDotBatch('owner', { timeoutMs: 0 })).status).toBe('claimed');
+});
+
+test('a closing guard removes a reservation that never became a claim', async () => {
+  await publish('prior'); await tryClaimBatch('prior', 'prior-owner'); await markBatchClaimCompleted('prior', 'prior-owner');
+  await publish('guard-reserve');
+  let checks = 0;
+  expect(await tryClaimBatchNow('guard-reserve', 'cancelled-owner', () => ++checks < 4)).toBeNull();
+  expect(await readBatchClaim('guard-reserve')).toBeNull();
+  expect((await tryClaimBatch('guard-reserve', 'next-owner')).ok).toBe(true);
 });

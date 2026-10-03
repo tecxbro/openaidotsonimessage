@@ -117,6 +117,8 @@ type OutboundBase = {
   readAt?: string;
   requestId?: string;
   requestHash?: string;
+  /** Optional stable-key hash; requestHash retains the legacy raw JSON hash for rollback. */
+  canonicalRequestHash?: string;
   attempts: number;
   /** For new messages, SDK return time; for controls, dispatch completion time. */
   sentAt?: string;

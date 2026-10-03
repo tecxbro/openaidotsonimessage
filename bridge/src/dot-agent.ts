@@ -1,3 +1,4 @@
+import { recordLatency } from "./latency.ts";
 /** Agent-authored actions only: no LLM, auto-answering server, or extra provider. */
 import { readFile } from 'node:fs/promises';
 import { pendingDotBatches } from './dot-inbox.ts';
@@ -12,6 +13,7 @@ type DirectReplyRequest = { batchId: string; owner: string; actionId: string; te
 /** Shared by the action-file and direct-text paths: never skip queue validation. */
 async function enqueueBatchAction(batchId: string, owner: string, request: ActionRequest) {
   await assertLiveBatchClaim(batchId, owner);
+  recordLatency("answerReadyAt", batchId);
   const batch = await readUnreadBatch(batchId);
   validateId(request.actionId);
   if (!batch.messages.some(m => m.spaceId === request.input.spaceId)) throw new Error('original_batch_space_required');
@@ -42,7 +44,7 @@ function parseDirectReply(raw: string): DirectReplyRequest {
 
 /** A retry must keep actionId and text unchanged. Completion is queue acceptance,
  * not delivery; completed claims return already_completed without a new send. */
-async function replyToBatch(request: DirectReplyRequest) {
+export async function replyToBatch(request: DirectReplyRequest) {
   const { batchId, owner, actionId, text } = request;
   const existing = await readBatchClaim(batchId);
   if (existing?.state === 'completed' && existing.owner === owner) {
@@ -59,6 +61,7 @@ async function replyToBatch(request: DirectReplyRequest) {
   return { ok: true, claim, outbound };
 }
 
+if (import.meta.main) {
 const [action, batchId, owner, arg] = process.argv.slice(2).filter(x => x !== '--');
 let result: unknown;
 if (action === 'reply' && batchId === undefined) {
@@ -84,3 +87,5 @@ if (action === 'reply' && batchId === undefined) {
   throw new Error('usage: dot-agent reply < stdin JSON {batchId,owner,actionId,text} | wait <owner> [timeout-ms]|pending|status|claim <batchId> <owner>|complete <batchId> <owner> [note]|enqueue <batchId> <owner> <action.json>');
 }
 console.log(JSON.stringify(result, null, 2));
+
+}

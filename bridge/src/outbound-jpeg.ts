@@ -46,14 +46,23 @@ function runFfmpeg(input: string, output: string): Promise<void> {
       output,
     ];
     const child = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      killTimer = setTimeout(() => child.kill('SIGKILL'), 1_000);
+    }, 30_000);
     let stderr = "";
     child.stderr?.on("data", (chunk: Buffer) => {
       stderr += chunk.toString("utf8");
     });
     child.on("error", (err) => {
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       reject(new OutboundJpegError(`ffmpeg failed to start: ${err.message}`));
     });
     child.on("close", (code) => {
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       if (code === 0 && existsSync(output)) {
         resolve();
         return;

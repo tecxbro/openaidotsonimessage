@@ -132,3 +132,19 @@ test('a media deadline leaves a visible pending identity and does not release it
     expect(batch.pendingMedia?.[0]?.lastError).toBe('media_operation_timeout');
   } finally { release(); await held; await f.runtime.stop(); }
 });
+
+ test('legacy queued typing records fail explicitly without invoking any SDK control', async () => {
+  const { writeFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const f = fixture(); let lookups = 0;
+  f.probe.resolveSpace = async () => { lookups++; return f.space; };
+  const item: OutboundItem = { id: 'legacy-typing', spaceId: 'space', kind: 'typing', state: 'start', createdAt: new Date().toISOString(), status: 'queued', attempts: 0 };
+  await writeFile(join(DATA_DIR, 'outbound-queue.json'), JSON.stringify({ items: [item] }));
+  try {
+    await f.probe.drainOutbound();
+    const result = (await loadOutboundQueue())[0]!;
+    expect(result.status).toBe('failed'); expect(result.lastError).toBe('outgoing_control_disabled');
+    expect(result.providerReturnedAt).toBeUndefined(); expect(result.providerAcceptedAt).toBeUndefined();
+    expect(lookups).toBe(0); expect(f.calls()).toBe(0);
+  } finally { await f.runtime.stop(); }
+});

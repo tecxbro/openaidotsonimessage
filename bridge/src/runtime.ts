@@ -1,6 +1,7 @@
+import { latencyNow, recordLatency } from "./latency.ts";
 import { OperationTimeout, withDeadline, settleWithin } from "./operation-deadline.ts";
 import { readBatchClaim } from "./batch-claim.ts";
-import { watchPublicationDirectory } from "./runtime-notifications.ts";
+import { subscribeOutboundPublication, watchPublicationDirectory } from "./runtime-notifications.ts";
 import { DATA_DIR } from "./types.ts";
 import { RuntimeDiagnostics, type DiagnosticOperation } from "./runtime-diagnostics.ts";
 import { MediaJobLimiter, pendingMediaJobs, saveMediaJob, type MediaJob } from "./media-jobs.ts";
@@ -246,6 +247,7 @@ export class GpProofRuntime {
       this.inboundTasks.set(job.messageId, task);
     }
 
+    this.notificationClosers.push(subscribeOutboundPublication(() => this.requestMaintenance("outbound_drain", () => this.drainOutbound())));
     // Directory watches survive atomic replacement of the queue/marker inode.
     this.notificationClosers.push(await watchPublicationDirectory(DATA_DIR,
       name => name === "outbound-queue.json",
@@ -380,6 +382,7 @@ export class GpProofRuntime {
       }
     }
 
+    if (timing.streamReceivedAt) recordLatency("streamReceivedAt", message.id, Date.parse(timing.streamReceivedAt));
     // Recipient read our outbound — do not queue or wake Grok.
     if ((message.content as ContentLike | undefined)?.type === "read") {
       await recordReadReceipt(space.id, (message.content as ContentLike).target?.id, message.id);
@@ -419,67 +422,67 @@ export class GpProofRuntime {
       | undefined;
     if (shaped.kind === "attachment" || shaped.kind === "voice") {
       const work = this.mediaLimiter.run(async () => {
-      const content = unwrapInboundContent(message.content as ContentLike) as ReadableAttachmentContent;
-      try {
-        const saved = await persistInboundAttachment(message.id, content, {
-          fallbackRead: async () => {
-            if (!this.app || !content.id) {
-              throw new Error("no app or attachment id for fallback");
-            }
-            const im = imessage(this.app);
-            const att = await im.getAttachment(content.id);
-            if (!att) throw new Error(`getAttachment returned empty for ${content.id}`);
-            return att.read();
-          },
-        });
-        attachmentExtras = {
-          attachmentPath: saved.path,
-          attachmentBytes: saved.bytes,
-          ...(saved.originalPath
-            ? { attachmentOriginalPath: saved.originalPath }
-            : {}),
-          ...(saved.originalMimeType
-            ? { attachmentOriginalMimeType: saved.originalMimeType }
-            : {}),
-        };
-        shaped.attachmentName = saved.name;
-        shaped.attachmentMimeType = saved.mimeType;
-        if (saved.attachmentId) shaped.attachmentId = saved.attachmentId;
-        log(
-          `saved inbound attachment id=${message.id} path=${saved.path} bytes=${saved.bytes}` +
-            (saved.convertedFromHeif ? " converted=heif2jpeg" : ""),
-        );
+        const content = unwrapInboundContent(message.content as ContentLike) as ReadableAttachmentContent;
+        try {
+          const saved = await persistInboundAttachment(message.id, content, {
+            fallbackRead: async () => {
+              if (!this.app || !content.id) {
+                throw new Error("no app or attachment id for fallback");
+              }
+              const im = imessage(this.app);
+              const att = await im.getAttachment(content.id);
+              if (!att) throw new Error(`getAttachment returned empty for ${content.id}`);
+              return att.read();
+            },
+          });
+          attachmentExtras = {
+            attachmentPath: saved.path,
+            attachmentBytes: saved.bytes,
+            ...(saved.originalPath
+              ? { attachmentOriginalPath: saved.originalPath }
+              : {}),
+            ...(saved.originalMimeType
+              ? { attachmentOriginalMimeType: saved.originalMimeType }
+              : {}),
+          };
+          shaped.attachmentName = saved.name;
+          shaped.attachmentMimeType = saved.mimeType;
+          if (saved.attachmentId) shaped.attachmentId = saved.attachmentId;
+          log(
+            `saved inbound attachment id=${message.id} path=${saved.path} bytes=${saved.bytes}` +
+              (saved.convertedFromHeif ? " converted=heif2jpeg" : ""),
+          );
 
-        if (shaped.kind === "voice") {
-          const stt = await transcribeInboundVoice(saved.path);
-          if (stt.text) {
-            attachmentExtras.transcript = stt.text;
-            log(
-              `moonshine stt ok id=${message.id} wav=${stt.wavPath} chars=${stt.text.length}`,
+          if (shaped.kind === "voice") {
+            const stt = await transcribeInboundVoice(saved.path);
+            if (stt.text) {
+              attachmentExtras.transcript = stt.text;
+              log(
+                `moonshine stt ok id=${message.id} wav=${stt.wavPath} chars=${stt.text.length}`,
+              );
+            } else {
+              log(
+                `moonshine stt empty/fail id=${message.id} wav=${stt.wavPath} err=${stt.error ?? "no text"}`,
+              );
+            }
+            shaped.text = voiceDisplayText(
+              saved.name,
+              saved.mimeType,
+              saved.bytes,
+              shaped.attachmentDuration,
+              stt.text || undefined,
             );
           } else {
-            log(
-              `moonshine stt empty/fail id=${message.id} wav=${stt.wavPath} err=${stt.error ?? "no text"}`,
+            shaped.text = attachmentDisplayText(
+              saved.name,
+              saved.mimeType,
+              saved.bytes,
             );
           }
-          shaped.text = voiceDisplayText(
-            saved.name,
-            saved.mimeType,
-            saved.bytes,
-            shaped.attachmentDuration,
-            stt.text || undefined,
-          );
-        } else {
-          shaped.text = attachmentDisplayText(
-            saved.name,
-            saved.mimeType,
-            saved.bytes,
-          );
+        } catch (err) {
+          log(`inbound attachment unavailable id=${message.id}`);
+          shaped.text = `${shaped.text} [download failed: attachment_unavailable]`;
         }
-      } catch (err) {
-        log(`inbound attachment unavailable id=${message.id}`);
-        shaped.text = `${shaped.text} [download failed: attachment_unavailable]`;
-      }
       }, this.shutdownSignal.signal);
       this.mediaWork.add(work);
       work.then(() => this.mediaWork.delete(work), () => this.mediaWork.delete(work));
@@ -545,6 +548,7 @@ export class GpProofRuntime {
       await savePendingBatch(this.pending);
       this.handled.add(message.id);
       await addHandledId(message.id);
+      recordLatency("inboundCommittedAt", message.id);
     });
     log(
       `queued inbound kind=${record.kind ?? "text"} id=${message.id} space=${space.id}`,
@@ -581,6 +585,8 @@ export class GpProofRuntime {
       });
       // Publish the durable wake intent before clearing recoverable input.
       if (!greetingOnly) await addWebhookPending(batchId);
+      for (const message of messages) recordLatency("batchPublishedAt", message.id);
+      recordLatency("batchPublishedAt", batchId);
       this.pending = [];
       await savePendingBatch([]);
       log(`flushed unread batchId=${batchId} count=${messages.length}`);
@@ -736,8 +742,20 @@ export class GpProofRuntime {
     const lookup = <T>(work: Promise<T>) => withDeadline(work, this.config.operationTimeoutMs ?? 30_000);
     const invoke = async <T>(call: () => Promise<T>): Promise<T> => {
       if (this.stopped) throw new Error("runtime_stopping");
-      sdkInvoked = true;
-      const work = Promise.resolve().then(call);
+      let started = false;
+      const work = Promise.resolve().then(() => {
+        if (this.stopped) throw new Error("runtime_stopping");
+        started = true; sdkInvoked = true;
+        const startedAt = latencyNow();
+        try { return call(); }
+        finally { recordLatency("sdkCallStartedAt", item.id, startedAt); }
+      }).then(result => {
+        if (started) recordLatency("providerReturnedAt", item.id);
+        return result;
+      }, error => {
+        if (started) recordLatency("providerReturnedAt", item.id);
+        throw error;
+      });
       this.providerTasks.add(work);
       work.then(() => this.providerTasks.delete(work), () => this.providerTasks.delete(work));
       try { return await withDeadline(work, this.config.operationTimeoutMs ?? 30_000); }

@@ -1,7 +1,7 @@
+import { atomicWriteFile } from "./durable-file.ts";
 /** Local host port. Files are durable work notices, not an autonomous dot wake. */
-import { mkdir, readFile, readdir, rename, writeFile, unlink } from 'node:fs/promises';
+import { mkdir, readFile, readdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { DATA_DIR, type UnreadBatch } from './types.ts';
 import { readUnreadBatch, validateId } from './storage.ts';
 import { readBatchClaim } from './batch-claim.ts';
@@ -11,12 +11,10 @@ export async function queueDotWake(batchId: string): Promise<void> {
   if ((await readBatchClaim(batchId))?.state === "completed") return;
   await mkdir(DOT_INBOX_DIR, { recursive: true, mode: 0o700 });
   const path = join(DOT_INBOX_DIR, `${batchId}.json`);
-  const tmp = `${path}.${randomUUID()}.tmp`;
-  await writeFile(tmp, JSON.stringify({ batchId }), { mode: 0o600 });
-  await rename(tmp, path);
+  await atomicWriteFile(path, JSON.stringify({ batchId }));
   if ((await readBatchClaim(batchId))?.state === "completed") await unlink(path).catch(() => {});
 }
-export async function* iteratePendingDotBatches(shouldProceed: () => boolean = () => true): AsyncGenerator<UnreadBatch> {
+export async function* iteratePendingDotBatches(shouldProceed: () => boolean = () => true, owner?: string): AsyncGenerator<UnreadBatch> {
   const names = await readdir(DOT_INBOX_DIR).catch((error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT') return []; throw error;
   });
@@ -28,11 +26,13 @@ export async function* iteratePendingDotBatches(shouldProceed: () => boolean = (
     try { ({ batchId } = JSON.parse(await readFile(path, 'utf8'))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
     if (!shouldProceed()) return;
-    if ((await readBatchClaim(batchId))?.state === 'completed') {
+    const claim = await readBatchClaim(batchId);
+    if (claim?.state === 'completed') {
       await unlink(path).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });
       continue;
     }
     if (!shouldProceed()) return;
+    if (owner && claim?.state === "claimed" && claim.owner !== owner && Date.parse(claim.leaseExpiresAt) > Date.now()) continue;
     const batch = await readUnreadBatch(batchId);
     if (!shouldProceed()) return;
     yield batch;

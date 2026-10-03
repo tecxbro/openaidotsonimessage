@@ -1,3 +1,5 @@
+import { atomicWriteFile, writeExclusiveFile } from "./durable-file.ts";
+import { recordLatency } from "./latency.ts";
 /**
  * Exclusive batch claim for agent-side processing.
  *
@@ -9,7 +11,7 @@
  * Cross-process safety: exclusive file create (`flag: "wx"`). In-process
  * locking alone is not sufficient across agent shells.
  */
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { acquireFileLock, withFileLock } from "./file-lock.ts";
@@ -80,22 +82,25 @@ async function batchSpaces(batchId: string): Promise<string[]> {
     throw error;
   }
 }
-async function loadOwners(): Promise<ConversationOwners> {
-  try { return JSON.parse(await readFile(OWNERS_PATH, "utf8")); }
+async function loadOwners(guard: () => void = () => {}): Promise<ConversationOwners> {
+  try {
+    const owners = JSON.parse(await readFile(OWNERS_PATH, "utf8")) as ConversationOwners;
+    if (!owners || typeof owners !== "object" || Array.isArray(owners) || Object.entries(owners).some(([key, reservations]) => !/^[a-f0-9]{64}$/.test(key) || !Array.isArray(reservations) || reservations.some(row => !row || typeof row.batchId !== "string" || typeof row.owner !== "string" || !Number.isFinite(Date.parse(row.leaseExpiresAt))))) throw new Error("corrupt_conversation_owners");
+    return owners;
+  }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("corrupt_conversation_owners");
   }
-  return rebuildOwners();
+  return rebuildOwners(guard);
 }
-async function saveOwners(owners: ConversationOwners): Promise<void> {
-  const tmp = `${OWNERS_PATH}.${process.pid}.tmp`;
-  await writeFile(tmp, JSON.stringify(owners), { mode: 0o600 });
-  await rename(tmp, OWNERS_PATH);
+async function saveOwners(owners: ConversationOwners, guard: () => void = () => {}): Promise<void> {
+  await atomicWriteFile(OWNERS_PATH, JSON.stringify(owners), guard);
 }
-async function rebuildOwners(): Promise<ConversationOwners> {
+async function rebuildOwners(guard: () => void = () => {}): Promise<ConversationOwners> {
   const { readdir } = await import("node:fs/promises");
   const owners: ConversationOwners = {};
   for (const name of await readdir(CLAIMS_DIR).catch(() => [])) {
+    guard();
     if (!name.endsWith(".json") || name === "conversation-owners.json") continue;
     const claim = await readClaim(name.slice(0, -5));
     if (!claim || claim.state !== "claimed" || leaseExpired(claim)) continue;
@@ -104,14 +109,15 @@ async function rebuildOwners(): Promise<ConversationOwners> {
       (owners[key] ??= []).push({ batchId: claim.batchId, owner: claim.owner, leaseExpiresAt: claim.leaseExpiresAt });
     }
   }
-  await saveOwners(owners);
+  guard();
+  await saveOwners(owners, guard);
   return owners;
 }
 export async function reconcileConversationOwners(): Promise<void> {
   await withFileLock(join(CLAIMS_DIR, ".claims-lock"), async () => { await rebuildOwners(); });
 }
 async function reserveConversations(batchId: string, owner: string, leaseExpiresAt: string, guard: () => void): Promise<BatchClaim | null> {
-  const owners = await loadOwners();
+  const owners = await loadOwners(guard);
   const spaces = await batchSpaces(batchId);
   for (const spaceId of spaces) {
     const key = createHash("sha256").update(spaceId).digest("hex");
@@ -128,7 +134,7 @@ async function reserveConversations(batchId: string, owner: string, leaseExpires
   // Reserve before claim publication. A crash retains a lease-bound owner;
   // another task cannot answer while that owner can still enqueue.
   guard();
-  await saveOwners(owners);
+  await saveOwners(owners, guard);
   return null;
 }
 
@@ -165,10 +171,8 @@ async function tryClaimBatchUnlocked(
         leaseExpiresAt,
       };
       assertCanProceed();
-      const tmp = `${path}.${process.pid}.refresh.tmp`;
-      await writeFile(tmp, `${JSON.stringify(refreshed, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-      assertCanProceed();
-      await rename(tmp, path);
+      await atomicWriteFile(path, `${JSON.stringify(refreshed, null, 2)}\n`, assertCanProceed);
+      recordLatency("claimedAt", batchId);
       return { ok: true, claim: refreshed, resumed: true };
     }
     if (!leaseExpired(existing, now)) {
@@ -190,11 +194,8 @@ async function tryClaimBatchUnlocked(
 
   try {
     assertCanProceed();
-    await writeFile(path, `${JSON.stringify(claim, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
-      flag: "wx",
-    });
+    await writeExclusiveFile(path, `${JSON.stringify(claim, null, 2)}\n`);
+    recordLatency("claimedAt", batchId);
     return { ok: true, claim, resumed: false };
   } catch (err) {
     if (!isExistError(err)) throw err;
@@ -235,12 +236,7 @@ async function markBatchClaimCompletedUnlocked(
     note: note ?? existing.note,
   };
   const path = claimPath(batchId);
-  const tmp = `${path}.${process.pid}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(done, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  await rename(tmp, path);
+  await atomicWriteFile(path, `${JSON.stringify(done, null, 2)}\n`);
   // Completion and deduplication evidence stay durable; only the active notice retires.
   await unlink(join(DATA_DIR, "dot-inbox", `${batchId}.json`)).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
   const owners = await loadOwners();
@@ -296,7 +292,22 @@ export async function tryClaimBatchNow(batchId: string, owner: string, shouldPro
     guard();
     return await tryClaimBatchUnlocked(batchId, owner, DEFAULT_CLAIM_LEASE_MS, guard);
   } catch (error) {
-    if (error instanceof ClaimGuardClosed) return null;
+    if (error instanceof ClaimGuardClosed) {
+      // A guard can close after reservation publication but before a new claim.
+      // Remove only this uncommitted reservation while still holding the lock.
+      if (!await readClaim(batchId) && existsSync(OWNERS_PATH)) {
+        const owners = await loadOwners();
+        let changed = false;
+        for (const key of Object.keys(owners)) {
+          const before = owners[key]!.length;
+          owners[key] = owners[key]!.filter(row => row.batchId !== batchId || row.owner !== owner);
+          changed ||= owners[key]!.length !== before;
+          if (!owners[key]!.length) delete owners[key];
+        }
+        if (changed) await saveOwners(owners);
+      }
+      return null;
+    }
     throw error;
   } finally { await release(); }
 }

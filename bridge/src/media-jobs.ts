@@ -1,16 +1,14 @@
+import { atomicWriteFile } from "./durable-file.ts";
 /** Recover in-progress downloads/STT from original provider IDs after restart. */
-import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { DATA_DIR } from './types.ts';
 export type MediaJob = { messageId: string; spaceId: string; senderId: string; lineId?: string; state: 'pending' | 'done'; kind?: 'attachment' | 'voice'; lastError?: 'media_operation_timeout'; createdAt: string; streamReceivedAt?: string; recoveryEventTimestamp?: string };
 const DIR = join(DATA_DIR, 'media-jobs');
 export async function saveMediaJob(job: MediaJob): Promise<void> {
   await mkdir(DIR, { recursive: true, mode: 0o700 });
   const path = join(DIR, `${encodeURIComponent(job.messageId)}.json`);
-  const tmp = `${path}.${randomUUID()}.tmp`;
-  await writeFile(tmp, JSON.stringify(job), { mode: 0o600 });
-  await rename(tmp, path);
+  await atomicWriteFile(path, JSON.stringify(job));
 }
 export async function pendingMediaJobs(): Promise<MediaJob[]> {
   const jobs: MediaJob[] = [];

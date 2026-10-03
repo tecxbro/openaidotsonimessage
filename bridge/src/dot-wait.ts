@@ -39,7 +39,7 @@ export async function waitForDotBatch(
     for (;;) {
       if (options.signal?.aborted) return { status: 'cancelled', ok: false, waitedMs: elapsed() };
       const seen = revision;
-      for await (const batch of iteratePendingDotBatches(shouldProceed)) {
+      for await (const batch of iteratePendingDotBatches(shouldProceed, owner)) {
         const claim = await readBatchClaim(batch.batchId);
         if (claim?.state === 'claimed' && claim.owner !== owner && Date.parse(claim.leaseExpiresAt) > Date.now()) continue;
         if (options.signal?.aborted) return { status: 'cancelled', ok: false, waitedMs: elapsed() };

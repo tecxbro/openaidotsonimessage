@@ -1,3 +1,4 @@
+import { atomicWriteFile } from "./durable-file.ts";
 /**
  * Durable Photon Image Cards final-enqueue path.
  *
@@ -15,9 +16,8 @@
  *    already references the batchId.
  */
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 import { DATA_DIR, type CardOptionMeta } from "./types.ts";
 import {
   enqueueOutbound,
@@ -90,13 +90,7 @@ function isImageStackRoute(raw: Record<string, unknown>): boolean {
 }
 
 async function atomicWriteJson(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  await rename(tmp, path);
+  await atomicWriteFile(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 export function cardsReadyMarkerPath(batchId: string): string {
@@ -107,7 +101,8 @@ export function cardsReadyMarkerPath(batchId: string): string {
 export async function writeCardsReadyMarker(
   marker: CardsReadyMarker,
 ): Promise<string> {
-  if (!Number.isInteger(marker.expectedCount) || marker.expectedCount !== marker.attachmentPaths.length || !marker.cards) throw new Error("complete_card_metadata_required");
+  if (!Array.isArray(marker.attachmentPaths) || !Number.isInteger(marker.expectedCount) || marker.expectedCount !== marker.attachmentPaths.length || !Array.isArray(marker.cards)) throw new Error("complete_card_metadata_required");
+  if (marker.cards.some(card => !card || (!card.title?.trim() && !card.optionId?.trim()))) throw new Error("complete_card_metadata_required");
   if (!await validCardFiles(marker.attachmentPaths, marker.cards)) throw new Error("incomplete_card_files_or_metadata");
   await assertOriginalCardConversation(marker.batchId, marker.spaceId);
   const path = cardsReadyMarkerPath(marker.batchId);
@@ -119,7 +114,7 @@ export async function writeCardsReadyMarker(
  * raster envelopes; the producer must close every file before publishing. */
 async function validCardFiles(paths: string[], cards?: CardOptionMeta[]): Promise<boolean> {
   if (!Array.isArray(paths) || paths.length < MIN_STACK_CARDS || new Set(paths).size !== paths.length) return false;
-  if (cards && (cards.length !== paths.length || cards.some(card => !card || typeof card !== "object"))) return false;
+  if (cards && (cards.length !== paths.length || cards.some(card => !card || typeof card !== "object" || Array.isArray(card) || ['optionId', 'title', 'url', 'caption', 'details', 'price'].some(key => key in card && typeof card[key as keyof CardOptionMeta] !== 'string')))) return false;
   for (const path of paths) {
     try {
       const bytes = await readFile(path);
