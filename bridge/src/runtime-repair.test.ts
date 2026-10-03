@@ -94,3 +94,28 @@ test('attempt CAS ignores an old continuation and timeout cannot downgrade accep
   const row = (await loadOutboundQueue())[0]!;
   expect(row.messageId).toBe('new-result'); expect(row.status).toBe('sent'); expect(row.deliveryState).toBe('provider_accepted');
 });
+
+test.each(['reply', 'poll', 'app', 'attachment_group'] as const)('late %s acceptance repairs rich metadata during shutdown without repeating the SDK', async kind => {
+  const f = fixture(), sent = gate<{ id: string; miniAppCardSession?: object }>(); let calls = 0;
+  const session = { chatGuid: 'chat', messageGuid: 'message', sessionId: 'session', targetMessageGuid: 'target' };
+  const invoke = () => { calls++; return sent.promise; };
+  (f.space as unknown as { send(): Promise<unknown>; getMessage(): Promise<unknown> }).send = invoke;
+  (f.space as unknown as { getMessage(): Promise<unknown> }).getMessage = async () => ({ reply: invoke });
+  f.probe.app = { stop: async () => { sent.resolve({ id: `late-${kind}`, ...(kind === 'app' ? { miniAppCardSession: session } : {}) }); } };
+  const { writeFile } = await import('node:fs/promises');
+  const paths = [join(DATA_DIR, 'a.jpg'), join(DATA_DIR, 'b.jpg')];
+  for (const path of paths) await writeFile(path, 'fixture');
+  const input = kind === 'reply' ? { kind, spaceId: 'space', targetMessageId: 'target', text: 'answer' }
+    : kind === 'poll' ? { kind, spaceId: 'space', title: 'Choose', options: ['A', 'B'] }
+    : kind === 'app' ? { kind, spaceId: 'space', url: 'https://example.com', live: true }
+    : { kind, spaceId: 'space', attachmentPaths: paths, cards: [{ title: 'A' }, { title: 'B' }], batchId: 'cards' };
+  const [item] = await enqueueOutbound(input);
+  try {
+    await f.probe.drainOutbound(); await f.runtime.stop();
+    const row = (await loadOutboundQueue()).find(row => row.id === item!.id)!;
+    expect(row.status).toBe('sent'); expect(row.messageId).toBe(`late-${kind}`); expect(calls).toBe(1);
+    if (kind === 'poll') { const { loadPollMeta } = await import('./storage.ts'); expect((await loadPollMeta('late-poll'))?.title).toBe('Choose'); }
+    if (kind === 'app') { const { loadAppCardSession } = await import('./storage.ts'); expect(await loadAppCardSession('late-app')).toEqual(session); }
+    if (row.kind === 'attachment_group') expect(row.parts?.map(part => part.title)).toEqual(['A', 'B']);
+  } finally { sent.resolve({ id: `late-${kind}` }); await f.runtime.stop().catch(() => {}); }
+});

@@ -12,7 +12,7 @@ import { assertRecoveryTimestamp, isAfterRecoveryCutover, loadRecoveryPolicy, ty
 import { hasSetupConfettiBeenSent, markSetupConfettiSent } from "./setup-confetti.ts";
 import { Spectrum, app, attachment, edit, group, poll, voice, type Message, type Space } from "@spectrum-ts/core";
 import { effect, imessage } from "@spectrum-ts/imessage";
-import type { AttachmentGroupPart, Config, InboundRecord, OutboundItem } from "./types.ts";
+import type { Config, InboundRecord, OutboundItem } from "./types.ts";
 import { isDefinitiveSendRejection, sendReplyWithFallback } from "./reply-fallback.ts";
 import {
   TYPING_HEARTBEAT_MS,
@@ -88,7 +88,7 @@ function resolveMessageEffect(name: string): string {
 
 
 const TYPING_STOP_TIMEOUT_MS = 5_000;
-type MaintenanceOperation = "outbound_drain" | "webhook_drain" | "cards_ready";
+type MaintenanceOperation = "webhook_drain" | "cards_ready";
 type TypingStopTiming = { startedAt: string; settledAt: string; outcome: "completed" | "failed" | "timeout" };
 
 type MessageWithAppSession = Message & {
@@ -185,7 +185,6 @@ export class GpProofRuntime {
 
   /** Repeated timer ticks cannot overlap a maintenance pass or queue retries. */
   private runMaintenance(operation: MaintenanceOperation, work: () => Promise<void>): Promise<void> {
-    if (operation === "outbound_drain") return this.drainOutbound();
     if (this.stopped) return Promise.resolve();
     const active = this.maintenance.get(operation);
     if (active) return active;
@@ -199,7 +198,6 @@ export class GpProofRuntime {
   }
 
   private requestMaintenance(operation: MaintenanceOperation, work: () => Promise<void>): void {
-    if (operation === "outbound_drain") { void this.drainOutbound(); return; }
     if (this.stopped) return;
     if (this.maintenance.has(operation)) this.maintenanceRequested.add(operation);
     else void this.runMaintenance(operation, work);
@@ -269,16 +267,16 @@ export class GpProofRuntime {
       this.inboundTasks.set(job.messageId, task);
     }
 
-    this.notificationClosers.push(subscribeOutboundPublication(() => this.requestMaintenance("outbound_drain", () => this.drainOutbound())));
+    this.notificationClosers.push(subscribeOutboundPublication(() => this.drainOutbound()));
     // Directory watches survive atomic replacement of the queue/marker inode.
     this.notificationClosers.push(await watchPublicationDirectory(DATA_DIR,
       name => name === "outbound-queue.json",
-      () => this.requestMaintenance("outbound_drain", () => this.drainOutbound())));
+      () => this.drainOutbound()));
     this.notificationClosers.push(await watchPublicationDirectory(CARDS_READY_DIR,
       name => name.endsWith(".json"),
       () => this.requestMaintenance("cards_ready", () => this.drainCardsReadyWatchdog())));
     this.outboundTimer = setInterval(() => {
-      void this.runMaintenance("outbound_drain", () => this.drainOutbound());
+      void this.drainOutbound();
     }, 500);
     this.webhookTimer = setInterval(() => {
       void this.runMaintenance("webhook_drain", () => this.drainWebhooks());
@@ -286,7 +284,7 @@ export class GpProofRuntime {
     this.cardsReadyTimer = setInterval(() => {
       void this.runMaintenance("cards_ready", () => this.drainCardsReadyWatchdog());
     }, 3000);
-    void this.runMaintenance("outbound_drain", () => this.drainOutbound());
+    void this.drainOutbound();
     void this.runMaintenance("webhook_drain", () => this.drainWebhooks());
     void this.runMaintenance("cards_ready", () => this.drainCardsReadyWatchdog());
 

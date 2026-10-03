@@ -24,7 +24,7 @@ async function until(check: () => Promise<boolean>, timeoutMs = 5_000) {
 type Probe = {
   spaces: Map<string, Space>;
   maintenance: Map<string, Promise<void>>;
-  runMaintenance(operation: 'outbound_drain' | 'webhook_drain', work: () => Promise<void>): Promise<void>;
+  runMaintenance(operation: 'webhook_drain', work: () => Promise<void>): Promise<void>;
   drainOutbound(): Promise<void>;
   drainOutboundInner(): Promise<void>;
   drainWebhooks(): Promise<void>;
@@ -104,16 +104,16 @@ test('a failed outbound pass is single-flight and recovery sends only the origin
     try { await gate; await original(); } finally { active--; }
   };
   try {
-    const first = f.probe.runMaintenance('outbound_drain', () => f.probe.drainOutbound());
-    const same = f.probe.runMaintenance('outbound_drain', () => f.probe.drainOutbound());
+    const first = f.probe.drainOutbound();
+    const same = f.probe.drainOutbound();
     expect(first).toBe(same);
     await Bun.sleep(10); expect(calls).toBe(1); release(); await first;
     expect(await readFile(queuePath, 'utf8')).toBe('PRIVATE_SECRET_SENTINEL invalid JSON');
     expect(f.sends()).toBe(0); expect(f.probe.maintenance.size).toBe(0);
     await writeFile(queuePath, originalQueue);
     await Promise.all([
-      f.probe.runMaintenance('outbound_drain', () => f.probe.drainOutbound()),
-      f.probe.runMaintenance('outbound_drain', () => f.probe.drainOutbound()),
+      f.probe.drainOutbound(),
+      f.probe.drainOutbound(),
     ]);
     expect(maximumActive).toBe(1); expect(calls).toBe(3); expect(f.sends()).toBe(1);
     const items = await loadOutboundQueue();
@@ -207,7 +207,7 @@ test('failed final flush still waits for active send and closes the provider wit
   const [later] = await enqueueOutbound({ spaceId: 'space', text: 'later' });
   await rm(join(DATA_DIR, 'unread'), { recursive: true });
   await writeFile(join(DATA_DIR, 'unread'), 'fixture blocks final flush');
-  const drain = probe.runMaintenance('outbound_drain', () => probe.drainOutbound());
+  const drain = probe.drainOutbound();
   await until(async () => sends === 1);
   const stopped = runtime.stop('SIGTERM').then(() => 'success', () => 'failed');
   try {
