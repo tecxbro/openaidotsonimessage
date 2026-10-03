@@ -1,0 +1,160 @@
+{
+  "sourceCommit": "5d2408194461176656a2f9c10440c489dd13a235",
+  "reviewedBaseline": "4ff6c4799716300b17c5d246ca58c9eb385d6a95",
+  "branch": "codex/immediate-dispatch-with-controls",
+  "initialWorkingTree": "clean",
+  "runtime": {
+    "bun": "1.3.14",
+    "declaredBunMinimum": "1.4.2",
+    "node": "23.11.0",
+    "typescript": "6.0.3",
+    "spectrumCore": "12.10.1",
+    "spectrumImessage": "12.10.1"
+  },
+  "typecheck": {
+    "command": "bun run --cwd bridge typecheck",
+    "result": "passed"
+  },
+  "tests": {
+    "command": "bun test --cwd bridge",
+    "passed": 179,
+    "failed": 0,
+    "assertions": 916,
+    "files": 31,
+    "seconds": 30.23
+  },
+  "baselineTests": {
+    "passed": 148,
+    "failed": 1,
+    "failure": "separate-process enqueue and repeated atomic replacement wake without polling"
+  },
+  "preflight": {
+    "ok": false,
+    "checks": {
+      "bun": true,
+      "sdk": true,
+      "hostedProvider": true,
+      "flock": true,
+      "ffmpeg": true,
+      "ffprobe": true,
+      "moonshine": false,
+      "modelFiles": false,
+      "modelIntegrity": false
+    },
+    "dataDirectory": "/tmp/dot-offline-preflight.4PDys2",
+    "activation": "active-task-only",
+    "externalModel": false,
+    "pendingMediaJobs": 0,
+    "limits": [
+      "No native automatic dot wake endpoint",
+      "Provider transport and physical-device UX require live proof",
+      "Live Mini public hosting is optional and unconfigured"
+    ]
+  },
+  "benchmarks": {
+    "sameProcess": {
+      "fixture": "local instant agent and provider; no network or device",
+      "agentProducer": "same process",
+      "measuredAt": "2026-10-03T03:50:46.360Z",
+      "runtime": "Bun 1.3.14",
+      "platform": "darwin",
+      "warmupSamples": 10,
+      "connections": 1,
+      "substantiveResponses": 110,
+      "controls": {
+        "enabled": true,
+        "reads": 110,
+        "typingStarts": 110,
+        "typingStops": 110
+      },
+      "inputCommitToPublication": {
+        "samples": 100,
+        "p50Ms": 17.96,
+        "p95Ms": 36.782,
+        "maximumMs": 122.447
+      },
+      "publicationToClaim": {
+        "samples": 100,
+        "p50Ms": 47.91,
+        "p95Ms": 71.611,
+        "maximumMs": 109.401
+      },
+      "claimToAnswerSubmission": {
+        "samples": 100,
+        "p50Ms": 1.499,
+        "p95Ms": 3.339,
+        "maximumMs": 6.511
+      },
+      "outboxCommitToSdkInvocation": {
+        "samples": 100,
+        "p50Ms": 19.529,
+        "p95Ms": 30.565,
+        "maximumMs": 62.575
+      },
+      "sdkInvocationToFakeReturn": {
+        "samples": 100,
+        "p50Ms": 0.124,
+        "p95Ms": 0.195,
+        "maximumMs": 0.423
+      }
+    },
+    "separateCli": {
+      "fixture": "local instant agent and provider; no network or device",
+      "agentProducer": "separate CLI process",
+      "measuredAt": "2026-10-03T03:51:56.362Z",
+      "runtime": "Bun 1.3.14",
+      "platform": "darwin",
+      "warmupSamples": 10,
+      "connections": 1,
+      "substantiveResponses": 110,
+      "controls": {
+        "enabled": true,
+        "reads": 110,
+        "typingStarts": 110,
+        "typingStops": 110
+      },
+      "inputCommitToPublication": {
+        "samples": 100,
+        "p50Ms": 17.056,
+        "p95Ms": 26.186,
+        "maximumMs": 53.592
+      },
+      "publicationToClaim": {
+        "samples": 100,
+        "p50Ms": 47.536,
+        "p95Ms": 57.767,
+        "maximumMs": 78.083
+      },
+      "claimToAnswerSubmission": {
+        "samples": 100,
+        "p50Ms": 27.01,
+        "p95Ms": 33.936,
+        "maximumMs": 43.24
+      },
+      "outboxCommitToSdkInvocation": {
+        "samples": 100,
+        "p50Ms": 33.785,
+        "p95Ms": 74.882,
+        "maximumMs": 84.52
+      },
+      "sdkInvocationToFakeReturn": {
+        "samples": 100,
+        "p50Ms": 0.117,
+        "p95Ms": 0.174,
+        "maximumMs": 0.744
+      }
+    }
+  },
+  "restrictionsObserved": [
+    "no push",
+    "no merge",
+    "no deploy",
+    "no live bridge restart",
+    "no real messages",
+    "no live state modification",
+    "no provider or model changes",
+    "no database migration"
+  ],
+  "branchVerdict": "Code-level findings repaired and local checks pass; supported Bun 1.4.2 validation remains before unconditional approval.",
+  "publicReleaseVerdict": "Not ready: installation, CI, device/voice/live delivery, unattended operation, packaging and asset rights remain."
+}

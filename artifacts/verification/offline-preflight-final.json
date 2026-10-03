@@ -1,0 +1,23 @@
+{
+  "ok": false,
+  "checks": {
+    "bun": true,
+    "sdk": true,
+    "hostedProvider": true,
+    "flock": true,
+    "ffmpeg": true,
+    "ffprobe": true,
+    "moonshine": false,
+    "modelFiles": false,
+    "modelIntegrity": false
+  },
+  "dataDirectory": "/tmp/dot-offline-preflight.4PDys2",
+  "activation": "active-task-only",
+  "externalModel": false,
+  "pendingMediaJobs": 0,
+  "limits": [
+    "No native automatic dot wake endpoint",
+    "Provider transport and physical-device UX require live proof",
+    "Live Mini public hosting is optional and unconfigured"
+  ]
+}
