@@ -159,6 +159,11 @@ async function tryClaimBatchUnlocked(
   const leaseExpiresAt = new Date(now + leaseMs).toISOString();
 
   const existing = await readClaim(batchId);
+  // This function runs under .claims-lock. An existing unreadable/invalid
+  // claim is not permission to create a new conversation reservation.
+  if (existing === null && existsSync(path)) {
+    throw new Error("corrupt_or_unreadable_batch_claim");
+  }
   if (existing?.state === "completed") return { ok: false, reason: "already_completed", claim: existing };
   if (existing?.state === "claimed" && existing.owner !== owner && !leaseExpired(existing)) return { ok: false, reason: "owned_by_other", claim: existing };
   const conflict = await reserveConversations(batchId, owner, leaseExpiresAt, assertCanProceed);

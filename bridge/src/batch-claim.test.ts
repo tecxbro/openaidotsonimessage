@@ -1,5 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
+import { writeUnreadBatch } from "./storage.ts";
 import { join } from "node:path";
 import { DATA_DIR } from "./types.ts";
 import {
@@ -20,6 +21,17 @@ afterEach(async () => {
 });
 
 describe("tryClaimBatch", () => {
+  test("corrupt claims fail before reserving another conversation", async () => {
+    for (const raw of ['{"batchId":', '{"batchId":"broken","owner":42}']) {
+      await writeFile(join(CLAIMS, "broken.json"), raw);
+      for (const batchId of ["broken", "next"]) await writeUnreadBatch({ batchId, flushedAt: new Date().toISOString(), messages: [{ id: batchId, spaceId: "same-space", senderId: "owner", text: "q", timestamp: new Date().toISOString(), receivedAt: new Date().toISOString() }] });
+      await expect(tryClaimBatch("broken", "bad-attempt")).rejects.toThrow("corrupt_or_unreadable_batch_claim");
+      expect(await readFile(join(CLAIMS, "broken.json"), "utf8")).toBe(raw);
+      expect((await tryClaimBatch("next", "other-owner")).ok).toBe(true);
+      await rm(join(CLAIMS, "next.json"));
+      await rm(join(CLAIMS, "conversation-owners.json"), { force: true });
+    }
+  });
   test("first claim wins", async () => {
     const a = await tryClaimBatch("b-1", "front-door");
     expect(a.ok).toBe(true);

@@ -20,6 +20,12 @@ export function prepareOutboundApp(
   url: string,
   live: boolean = false,
 ): PreparedApp {
+  if (typeof url !== "string") {
+    throw new OutboundAppError("refusing app url: expected a string.");
+  }
+  if (typeof live !== "boolean") {
+    throw new OutboundAppError("refusing app live flag: expected a boolean.");
+  }
   const trimmed = url.trim();
   if (!trimmed) {
     throw new OutboundAppError(
@@ -42,5 +48,5 @@ export function prepareOutboundApp(
     );
   }
 
-  return { url: trimmed, live: Boolean(live) };
+  return { url: trimmed, live };
 }

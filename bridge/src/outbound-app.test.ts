@@ -1,4 +1,12 @@
 import { OutboundAppError, prepareOutboundApp } from "./outbound-app.ts";
+import { expect, test } from "bun:test";
+
+test("app helper rejects JSON type errors instead of coercing live", () => {
+  for (const live of ["false", 0, null, {}]) {
+    expect(() => prepareOutboundApp("https://example.com", live as never)).toThrow("expected a boolean");
+  }
+  expect(() => prepareOutboundApp(42 as never)).toThrow("expected a string");
+});
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(msg);
