@@ -13,7 +13,7 @@ export type ReplyDeliveryResult =
   | { status: 'failed'; reason: string }
   | { status: 'unknown'; reason: string };
 const messageId = (value: unknown): string | undefined => {
-  if (value && typeof value === 'object' && 'id' in value && typeof value.id === 'string') return value.id;
+  if (value && typeof value === 'object' && 'id' in value && typeof value.id === 'string' && value.id.trim()) return value.id;
 };
 /** Fallback is safe only before a send, or after a documented unsupported skip.
  * A thrown send can have reached the provider: never duplicate it automatically. */
@@ -24,18 +24,22 @@ export async function sendReplyWithFallback(space: ReplySpaceLike, targetMessage
   if (target) {
     let sent: unknown;
     try { sent = await target.reply(text); } catch (error) {
-      if (isDefinitiveSendRejection(error)) throw error;
+      if (isDefinitiveSendRejection(error) || (error instanceof Error && error.message === 'runtime_stopping')) throw error;
       return { status: 'unknown', reason: 'reply send outcome unknown' };
     }
-    if (sent !== undefined) return { status: 'sent', mode: 'reply', messageId: messageId(sent), providerReturnedAt: new Date().toISOString() };
+    if (sent !== undefined) return messageId(sent)
+      ? { status: 'sent', mode: 'reply', messageId: messageId(sent), providerReturnedAt: new Date().toISOString() }
+      : { status: 'unknown', reason: 'reply returned no usable message ID' };
     replyError = 'reply returned undefined';
   }
   try {
     const sent = await space.send(text);
-    if (sent !== undefined) return { status: 'sent', mode: 'fallback', replyError, messageId: messageId(sent), providerReturnedAt: new Date().toISOString() };
+    if (sent !== undefined) return messageId(sent)
+      ? { status: 'sent', mode: 'fallback', replyError, messageId: messageId(sent), providerReturnedAt: new Date().toISOString() }
+      : { status: 'unknown', reason: 'fallback returned no usable message ID' };
     return { status: 'failed', reason: `${replyError}; fallback space.send returned undefined` };
   } catch (error) {
-    if (isDefinitiveSendRejection(error)) throw error;
+    if (isDefinitiveSendRejection(error) || (error instanceof Error && error.message === 'runtime_stopping')) throw error;
     return { status: 'unknown', reason: `${replyError}; fallback space.send failed with unknown outcome` };
   }
 }

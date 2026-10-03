@@ -107,7 +107,7 @@ export type UnreadBatch = {
   flushedAt: string;
   messages: InboundRecord[];
   /** Earlier admitted media still processing in these conversations. */
-  pendingMedia?: Array<{ messageId: string; spaceId: string; kind?: "attachment" | "voice"; streamReceivedAt?: string; lastError?: "media_operation_timeout" }>;
+  pendingMedia?: Array<{ messageId: string; spaceId: string; kind?: "attachment" | "voice"; streamReceivedAt?: string; lastError?: "media_operation_timeout" | "media_job_cancelled" | "media_completion_pending" }>;
   /** Set when runtime already answered (skip Front Door / Chatty). */
   handledBy?: "runtime-greeting";
 };
@@ -125,6 +125,11 @@ type OutboundBase = {
   /** Optional stable-key hash; requestHash retains the legacy raw JSON hash for rollback. */
   canonicalRequestHash?: string;
   attempts: number;
+  /** Exact SDK attempt identity; observer outcomes may only update this attempt. */
+  attemptId?: string;
+  /** Durable session evidence returned by the SDK, before derived metadata. */
+  appSession?: { chatGuid: string; messageGuid: string; sessionId: string; targetMessageGuid: string };
+  metadataPending?: boolean;
   /** For new messages, SDK return time; for controls, dispatch completion time. */
   sentAt?: string;
   /** Outbox dispatch began, before storage/space lookup/provider work. */

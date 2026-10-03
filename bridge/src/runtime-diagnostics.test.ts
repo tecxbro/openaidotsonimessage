@@ -247,7 +247,7 @@ test('real Bun stays alive across failing startup and interval launches, then re
       stop: async () => { globalThis.finish(); },
     }));
     let failing = true; let outbound = 0; let webhooks = 0;
-    runtime.drainOutbound = async () => { outbound++; if (failing) throw new Error('PRIVATE_SECRET_SENTINEL'); };
+    runtime.drainOutboundInner = async () => { outbound++; if (failing) throw new Error('PRIVATE_SECRET_SENTINEL'); };
     runtime.drainWebhooks = async () => { webhooks++; if (failing) throw new Error('PRIVATE_PAYLOAD_SENTINEL'); };
     const running = runtime.start();
     await Bun.sleep(2200);

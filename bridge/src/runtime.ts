@@ -4,7 +4,7 @@ import { readBatchClaim } from "./batch-claim.ts";
 import { subscribeOutboundPublication, watchPublicationDirectory } from "./runtime-notifications.ts";
 import { DATA_DIR } from "./types.ts";
 import { RuntimeDiagnostics, type DiagnosticOperation } from "./runtime-diagnostics.ts";
-import { MediaJobLimiter, pendingMediaJobs, saveMediaJob, type MediaJob } from "./media-jobs.ts";
+import { MediaWorker, processInboundMedia, pendingMediaJobs, saveMediaJob, type MediaJob } from "./media-jobs.ts";
 import { queueDotWake } from "./dot-inbox.ts";
 import { recoverDurableState } from "./recovery.ts";
 import { assertRecoveryTimestamp, isAfterRecoveryCutover, loadRecoveryPolicy, type RecoveryPolicy } from "./recovery-policy.ts";
@@ -20,20 +20,12 @@ import {
 import {
   shapeInboundContent,
   unwrapInboundContent,
+  type ShapedInbound,
   type InboundMessageMetadata,
   toInboundRecord,
   type ContentLike,
 } from "./inbound.ts";
-import {
-  attachmentDisplayText,
-  persistInboundAttachment,
-  InboundAttachmentError,
-  type ReadableAttachmentContent,
-} from "./inbound-attachment.ts";
-import {
-  transcribeInboundVoice,
-  voiceDisplayText,
-} from "./voice-stt.ts";
+import type { ReadableAttachmentContent } from "./inbound-attachment.ts";
 import {
   addHandledId,
   addWebhookPending,
@@ -48,6 +40,7 @@ import {
   removeWebhookPending,
   savePendingBatch,
   updateOutbound,
+  beginOutboundAttempt,
   writeUnreadBatch,
   savePollMeta,
   loadPollMeta,
@@ -138,15 +131,13 @@ export class GpProofRuntime {
   private pending: InboundRecord[] = [];
   private flushScheduled = false;
   private notificationClosers: Array<() => void> = [];
-  private outboundAgain = false;
-  private maintenanceAgain = new Set<MaintenanceOperation>();
+  private outboundRequested = false;
+  private maintenanceRequested = new Set<MaintenanceOperation>();
   private webhookTasks = new Set<Promise<void>>();
   private outboundTimer: ReturnType<typeof setInterval> | null = null;
   private webhookTimer: ReturnType<typeof setInterval> | null = null;
   private cardsReadyTimer: ReturnType<typeof setInterval> | null = null;
-  private sending = new Set<string>();
   private outboundDrain?: Promise<void>;
-  private flushing = false;
   private app: Awaited<ReturnType<typeof Spectrum>> | undefined;
   private stopped = false;
   private consumingStream = false;
@@ -159,8 +150,7 @@ export class GpProofRuntime {
   private controlTasks = new Set<Promise<unknown>>();
   private typingEpochs = new Map<string, number>();
   private readonly shutdownSignal = new AbortController();
-  private readonly mediaLimiter: MediaJobLimiter;
-  private mediaWork = new Set<Promise<unknown>>();
+  private readonly media: MediaWorker;
   private providerTasks = new Set<Promise<unknown>>();
   private recoveryPolicyLoad?: Promise<RecoveryPolicy | undefined>;
   private recoveryPolicy(): Promise<RecoveryPolicy | undefined> {
@@ -196,21 +186,23 @@ export class GpProofRuntime {
 
   /** Repeated timer ticks cannot overlap a maintenance pass or queue retries. */
   private runMaintenance(operation: MaintenanceOperation, work: () => Promise<void>): Promise<void> {
+    if (operation === "outbound_drain") return this.drainOutbound();
     if (this.stopped) return Promise.resolve();
     const active = this.maintenance.get(operation);
     if (active) return active;
     const task = this.observeBackground(operation, work)
       .finally(() => {
         this.maintenance.delete(operation);
-        if (this.maintenanceAgain.delete(operation) && !this.stopped) void this.runMaintenance(operation, work);
+        if (this.maintenanceRequested.delete(operation) && !this.stopped) void this.runMaintenance(operation, work);
       });
     this.maintenance.set(operation, task);
     return task;
   }
 
   private requestMaintenance(operation: MaintenanceOperation, work: () => Promise<void>): void {
+    if (operation === "outbound_drain") { void this.drainOutbound(); return; }
     if (this.stopped) return;
-    if (this.maintenance.has(operation)) this.maintenanceAgain.add(operation);
+    if (this.maintenance.has(operation)) this.maintenanceRequested.add(operation);
     else void this.runMaintenance(operation, work);
   }
 
@@ -225,7 +217,7 @@ export class GpProofRuntime {
 
   constructor(config: Config, private readonly connect: typeof Spectrum = Spectrum) {
     this.config = config;
-    this.mediaLimiter = new MediaJobLimiter(config.mediaConcurrency ?? 2);
+    this.media = new MediaWorker(config.mediaConcurrency ?? 2, this.shutdownSignal.signal);
     for (const ms of [config.operationTimeoutMs, config.shutdownGraceMs, config.mediaTimeoutMs]) {
       if (ms !== undefined && (!Number.isFinite(ms) || ms <= 0)) throw new Error("invalid_operation_bound");
     }
@@ -343,11 +335,11 @@ export class GpProofRuntime {
     let stopError: unknown;
     const inboundSettled = await settleWithin(this.inboundTasks.values(), remaining());
     if (inboundSettled) {
-      try { await withDeadline(this.commit(() => this.flushPending()), remaining()); }
+      try { await withDeadline(this.flushPending(), remaining()); }
       catch (error) { stopFailed = true; stopError = error; }
     }
     const work = () => [this.outboundDrain, ...this.maintenance.values(), ...this.webhookTasks,
-      ...this.typingCleanupTasks, ...this.typingStops.values(), ...this.controlTasks, ...this.providerTasks, ...this.mediaWork];
+      ...this.typingCleanupTasks, ...this.typingStops.values(), ...this.controlTasks, ...this.providerTasks, ...this.media.tasks()];
     const settled = inboundSettled && await settleWithin(work(), remaining());
     // Pinned Spectrum stop tears down its provider clients. A deadline alone
     // cannot transfer ownership while an old SDK invocation can still act.
@@ -433,160 +425,91 @@ export class GpProofRuntime {
       kind: shaped.kind as "attachment" | "voice", state: "pending", createdAt: new Date().toISOString(), streamReceivedAt: timing.streamReceivedAt,
       ...(policy ? { recoveryEventTimestamp: eventTimestamp.toISOString() } : {}),
     } : undefined;
-    if (mediaJob) await this.commit(() => saveMediaJob(mediaJob));
     await saveConversationContext(space.id, { senderId, lineId: (space as Space & { phone?: string }).phone });
     const contextSavedAt = new Date().toISOString();
     this.spaces.set(space.id, space);
     if (mediaJob) {
-
       void this.observeBackground("read_control", () => this.markReadBestEffort(message));
     }
 
-    let attachmentExtras:
-      | {
-          attachmentPath: string;
-          attachmentBytes: number;
-          attachmentOriginalPath?: string;
-          attachmentOriginalMimeType?: string;
-          transcript?: string;
-        }
-      | undefined;
-    if (shaped.kind === "attachment" || shaped.kind === "voice") {
-      const work = this.mediaLimiter.run(async () => {
-        const content = unwrapInboundContent(message.content as ContentLike) as ReadableAttachmentContent;
-        try {
-          const saved = await persistInboundAttachment(message.id, content, {
-            fallbackRead: async () => {
-              if (!this.app || !content.id) {
-                throw new Error("no app or attachment id for fallback");
-              }
-              const im = imessage(this.app);
-              const att = await im.getAttachment(content.id);
-              if (!att) throw new Error(`getAttachment returned empty for ${content.id}`);
-              return att.read();
-            },
-          });
-          attachmentExtras = {
-            attachmentPath: saved.path,
-            attachmentBytes: saved.bytes,
-            ...(saved.originalPath
-              ? { attachmentOriginalPath: saved.originalPath }
-              : {}),
-            ...(saved.originalMimeType
-              ? { attachmentOriginalMimeType: saved.originalMimeType }
-              : {}),
-          };
-          shaped.attachmentName = saved.name;
-          shaped.attachmentMimeType = saved.mimeType;
-          if (saved.attachmentId) shaped.attachmentId = saved.attachmentId;
-          log(
-            `saved inbound attachment id=${message.id} path=${saved.path} bytes=${saved.bytes}` +
-              (saved.convertedFromHeif ? " converted=heif2jpeg" : ""),
-          );
-
-          if (shaped.kind === "voice") {
-            const stt = await transcribeInboundVoice(saved.path);
-            if (stt.text) {
-              attachmentExtras.transcript = stt.text;
-              log(
-                `moonshine stt ok id=${message.id} wav=${stt.wavPath} chars=${stt.text.length}`,
-              );
-            } else {
-              log(
-                `moonshine stt empty/fail id=${message.id} wav=${stt.wavPath} err=${stt.error ?? "no text"}`,
-              );
+    const finishInput = async (shaped: ShapedInbound, attachmentExtras?: Partial<InboundRecord>): Promise<void> => {
+      let record = toInboundRecord(
+        shaped,
+        {
+          id: message.id,
+          spaceId: space.id,
+          senderId,
+          timestamp: eventTimestamp.toISOString(),
+          receivedAt: new Date().toISOString(),
+        },
+        attachmentExtras,
+      );
+      if (record.kind === "poll_vote") {
+        const pollMessageId = message.id.split(":")[0] ?? "";
+        if (pollMessageId) {
+          try {
+            const meta = await loadPollMeta(pollMessageId);
+            if (meta?.title && (!record.pollTitle || record.pollTitle === "Poll")) {
+              record = {
+                ...record,
+                pollTitle: meta.title,
+                text: `${record.pollSelected === false ? "unvoted" : "voted"} ${record.pollOption ?? "?"} on "${meta.title}"`,
+              };
             }
-            shaped.text = voiceDisplayText(
-              saved.name,
-              saved.mimeType,
-              saved.bytes,
-              shaped.attachmentDuration,
-              stt.text || undefined,
+          } catch (err) {
+            log(`poll meta load failed id=${pollMessageId}`);
+          }
+        }
+      }
+      if (record.kind === "reaction") {
+        try {
+          const resolved = await resolveReactionOption(record.targetMessageId);
+          record = applyResolvedOptionToInbound(record, resolved);
+          if (resolved.ambiguous) {
+            log(
+              `reaction option ambiguous id=${message.id} reason=${resolved.reason} names=${resolved.optionNames.length}`,
             );
           } else {
-            shaped.text = attachmentDisplayText(
-              saved.name,
-              saved.mimeType,
-              saved.bytes,
+            log(
+              `reaction option resolved id=${message.id} part=${resolved.partIndex} title=${resolved.title ?? resolved.optionId ?? "?"}`,
             );
           }
         } catch (err) {
-          log(`inbound attachment unavailable id=${message.id}`);
-          shaped.text = `${shaped.text} [download failed: attachment_unavailable]`;
+          log(`reaction option resolve failed id=${message.id}`);
         }
-      }, this.shutdownSignal.signal);
-      this.mediaWork.add(work);
-      work.then(() => this.mediaWork.delete(work), () => this.mediaWork.delete(work));
-      try { await withDeadline(work, this.config.mediaTimeoutMs ?? 180_000); }
-      catch (error) {
-        if (error instanceof OperationTimeout && mediaJob) await saveMediaJob({ ...mediaJob, lastError: "media_operation_timeout" });
-        throw error; // Keep the pending identity for recovery; no fabricated completed input.
       }
-    }
 
-    let record = toInboundRecord(
-      shaped,
-      {
-        id: message.id,
-        spaceId: space.id,
-        senderId,
-        timestamp: eventTimestamp.toISOString(),
-        receivedAt: new Date().toISOString(),
-      },
-      attachmentExtras,
-    );
-    if (record.kind === "poll_vote") {
-      const pollMessageId = message.id.split(":")[0] ?? "";
-      if (pollMessageId) {
-        try {
-          const meta = await loadPollMeta(pollMessageId);
-          if (meta?.title && (!record.pollTitle || record.pollTitle === "Poll")) {
-            record = {
-              ...record,
-              pollTitle: meta.title,
-              text: `${record.pollSelected === false ? "unvoted" : "voted"} ${record.pollOption ?? "?"} on "${meta.title}"`,
-            };
-          }
-        } catch (err) {
-          log(`poll meta load failed id=${pollMessageId}`);
-        }
-      }
-    }
-    if (record.kind === "reaction") {
-      try {
-        const resolved = await resolveReactionOption(record.targetMessageId);
-        record = applyResolvedOptionToInbound(record, resolved);
-        if (resolved.ambiguous) {
-          log(
-            `reaction option ambiguous id=${message.id} reason=${resolved.reason} names=${resolved.optionNames.length}`,
-          );
-        } else {
-          log(
-            `reaction option resolved id=${message.id} part=${resolved.partIndex} title=${resolved.title ?? resolved.optionId ?? "?"}`,
-          );
-        }
-      } catch (err) {
-        log(`reaction option resolve failed id=${message.id}`);
-      }
-    }
-
-    record.lineId = (space as Space & { phone?: string }).phone;
-    record.streamReceivedAt = timing.streamReceivedAt;
-    record.contextSavedAt = contextSavedAt;
-    await this.commit(async () => {
-      await appendInbound(record);
-      this.pending.push(record);
-      await savePendingBatch(this.pending);
-      this.handled.add(message.id);
-      await addHandledId(message.id);
-      recordLatency("inboundCommittedAt", message.id);
-    });
-    log(
-      `queued inbound kind=${record.kind ?? "text"} id=${message.id} space=${space.id}`,
-    );
-    if (mediaJob) await saveMediaJob({ ...mediaJob, state: "done" });
-    else void this.observeBackground("read_control", () => this.markReadBestEffort(message));
-    this.scheduleFlush();
+      record.lineId = (space as Space & { phone?: string }).phone;
+      record.streamReceivedAt = timing.streamReceivedAt;
+      record.contextSavedAt = contextSavedAt;
+      await this.commit(async () => {
+        if (this.handled.has(message.id)) return;
+        await appendInbound(record);
+        this.pending.push(record);
+        await savePendingBatch(this.pending);
+        this.handled.add(message.id);
+        await addHandledId(message.id);
+        recordLatency("inboundCommittedAt", message.id);
+      });
+      log(
+        `queued inbound kind=${record.kind ?? "text"} id=${message.id} space=${space.id}`,
+      );
+      if (!mediaJob) void this.observeBackground("read_control", () => this.markReadBestEffort(message));
+      if (!mediaJob) this.scheduleFlush();
+    };
+    if (!mediaJob) { await finishInput(shaped); return; }
+    // The worker owns admission through durable completion. The deadline below
+    // only bounds this observer; it cannot detach completion or release a slot.
+    await this.media.observe(mediaJob, async () => {
+      const content = unwrapInboundContent(message.content as ContentLike) as ReadableAttachmentContent;
+      const result = await processInboundMedia(message.id, shaped, content, async () => {
+        if (!this.app || !content.id) throw new Error("attachment_unavailable");
+        const att = await imessage(this.app).getAttachment(content.id);
+        if (!att) throw new Error("attachment_unavailable");
+        return att.read();
+      });
+      await finishInput(result.shaped, result.extras);
+    }, this.config.mediaTimeoutMs ?? 180_000, () => this.scheduleFlush());
   }
 
   private async markReadBestEffort(message: Message): Promise<void> {
@@ -603,57 +526,53 @@ export class GpProofRuntime {
     this.flushScheduled = true;
     queueMicrotask(() => {
       this.flushScheduled = false;
-      if (!this.stopped) void this.observeBackground("batch_flush", () => this.commit(() => this.flushPending()));
+      if (!this.stopped) void this.observeBackground("batch_flush", () => this.flushPending());
     });
   }
 
-  private async flushPending(): Promise<void> {
-    if (this.flushing) return;
+  private flushPending(): Promise<void> { return this.commit(() => this.flushPendingInner()); }
+
+  private async flushPendingInner(): Promise<void> {
     if (this.pending.length === 0) return;
-    this.flushing = true;
-    try {
-      const messages = this.pending;
-      const batchId = newId("b");
-      const greetingOnly = this.config.greetingFastPath === true && isGreetingOnlyBatch(messages);
+    const messages = this.pending;
+    const batchId = newId("b");
+    const greetingOnly = this.config.greetingFastPath === true && isGreetingOnlyBatch(messages);
 
-      const pendingMedia = (await pendingMediaJobs()).filter(job => messages.some(message => message.spaceId === job.spaceId)).map(({ messageId, spaceId, kind, streamReceivedAt, lastError }) => ({ messageId, spaceId, kind, streamReceivedAt, lastError }));
-      await writeUnreadBatch({
-        batchId,
-        flushedAt: new Date().toISOString(),
-        messages,
-        ...(pendingMedia.length ? { pendingMedia } : {}),
-        ...(greetingOnly ? { handledBy: "runtime-greeting" as const } : {}),
-      });
-      // Publish the durable wake intent before clearing recoverable input.
-      if (!greetingOnly) await addWebhookPending(batchId);
-      for (const message of messages) recordLatency("batchPublishedAt", message.id);
-      recordLatency("batchPublishedAt", batchId);
-      this.pending = [];
-      await savePendingBatch([]);
-      log(`flushed unread batchId=${batchId} count=${messages.length}`);
-      if (!(await this.recoveryPolicy())?.suppressOnboarding && !(await hasSetupConfettiBeenSent())) {
-        for (const spaceId of new Set(messages.map(m => m.spaceId))) {
-          await enqueueOutbound({ kind: "text", spaceId, text: "it’s dot here", effect: "confetti" }, "setup-confetti");
-        }
-        await markSetupConfettiSent();
+    const pendingMedia = (await pendingMediaJobs()).filter(job => messages.some(message => message.spaceId === job.spaceId)).map(({ messageId, spaceId, kind, streamReceivedAt, lastError }) => ({ messageId, spaceId, kind, streamReceivedAt, lastError }));
+    await writeUnreadBatch({
+      batchId,
+      flushedAt: new Date().toISOString(),
+      messages,
+      ...(pendingMedia.length ? { pendingMedia } : {}),
+      ...(greetingOnly ? { handledBy: "runtime-greeting" as const } : {}),
+    });
+    // Publish the durable wake intent before clearing recoverable input.
+    if (!greetingOnly) await addWebhookPending(batchId);
+    for (const message of messages) recordLatency("batchPublishedAt", message.id);
+    recordLatency("batchPublishedAt", batchId);
+    this.pending = [];
+    await savePendingBatch([]);
+    log(`flushed unread batchId=${batchId} count=${messages.length}`);
+    if (!(await this.recoveryPolicy())?.suppressOnboarding && !(await hasSetupConfettiBeenSent())) {
+      for (const spaceId of new Set(messages.map(m => m.spaceId))) {
+        await enqueueOutbound({ kind: "text", spaceId, text: "it’s dot here", effect: "confetti" }, "setup-confetti");
       }
-
-      if (greetingOnly) {
-        await this.enqueueGreetingFastPath(batchId, messages);
-        return;
-      }
-
-      // Ancillary controls run independently of durable publication and host pickup.
-      const spaceIds = [...new Set(messages.map((m) => m.spaceId))];
-      if (!this.stopped) for (const spaceId of spaceIds) {
-        void this.observeBackground("typing_control", () => this.startTypingBestEffort(spaceId));
-      }
-
-      if (this.config.hostMode === "dot-local") await this.postWebhook(batchId);
-      else this.notifyWebhook(batchId);
-    } finally {
-      this.flushing = false;
+      await markSetupConfettiSent();
     }
+
+    if (greetingOnly) {
+      await this.enqueueGreetingFastPath(batchId, messages);
+      return;
+    }
+
+    // Ancillary controls run independently of durable publication and host pickup.
+    const spaceIds = [...new Set(messages.map((m) => m.spaceId))];
+    if (!this.stopped) for (const spaceId of spaceIds) {
+      void this.observeBackground("typing_control", () => this.startTypingBestEffort(spaceId));
+    }
+
+    if (this.config.hostMode === "dot-local") await this.postWebhook(batchId);
+    else this.notifyWebhook(batchId);
   }
 
   /**
@@ -846,15 +765,15 @@ export class GpProofRuntime {
 
   private drainOutbound(): Promise<void> {
     if (this.stopped) return Promise.resolve();
-    this.outboundAgain = true;
+    this.outboundRequested = true;
     if (this.outboundDrain) return this.outboundDrain;
     const run = (async () => {
-      while (this.outboundAgain && !this.stopped) {
-        this.outboundAgain = false;
+      while (this.outboundRequested && !this.stopped) {
+        this.outboundRequested = false;
         await this.drainOutboundInner();
       }
     })();
-    this.outboundDrain = run.finally(() => { this.outboundDrain = undefined; });
+    this.outboundDrain = this.observeBackground("outbound_drain", () => run).finally(() => { this.outboundDrain = undefined; });
     return this.outboundDrain;
   }
 
@@ -871,335 +790,156 @@ export class GpProofRuntime {
         if (item.blockedBy !== blocker) await updateOutbound(item.id, { blockedBy: blocker });
         continue;
       }
-      if (this.sending.has(item.id)) continue;
       if (item.nextAttemptAt && Date.parse(item.nextAttemptAt) > now) { blocked.set(item.spaceId, item.id); continue; }
-      this.outboundAgain = true; // Reconcile durable state after the pass, even if a watch event was missed.
-      this.sending.add(item.id);
-      try {
-        await this.sendOutbound(item);
-        const current = (await loadOutboundQueue()).find(row => row.id === item.id);
-        if (current?.status === "unknown" || current?.status === "queued" || current?.status === "sending") blocked.set(item.spaceId, item.id);
-      } finally {
-        this.sending.delete(item.id);
-      }
+      this.outboundRequested = true; // Reconcile durable state after the pass, even if a watch event was missed.
+      await this.sendOutbound(item);
+      const current = (await loadOutboundQueue()).find(row => row.id === item.id);
+      if (current?.status === "unknown" || current?.status === "queued" || current?.status === "sending") blocked.set(item.spaceId, item.id);
+
     }
   }
 
-  private async sendOutbound(item: OutboundItem): Promise<void> {
-    const nextAttempts = item.attempts + 1;
+  private async sendOutbound(selected: OutboundItem): Promise<void> {
+    if (this.stopped) return;
+    const item = await beginOutboundAttempt(selected.id, selected.attempts);
+    if (!item) return;
+    const attemptId = item.attemptId!;
     const kind = outboundKind(item);
-    let providerCompleted = false;
+    const patch = (value: Partial<OutboundItem>) => updateOutbound(item.id, value, attemptId);
     let sdkInvoked = false;
     let invocationTimedOut = false;
+    let editSession: AppCardSession | undefined;
     const lookup = <T>(work: Promise<T>) => withDeadline(work, this.config.operationTimeoutMs ?? 30_000);
-    const invoke = async <T>(call: () => Promise<T>): Promise<T> => {
-      if (this.stopped) throw new Error("runtime_stopping");
-      let started = false;
-      const work = Promise.resolve().then(() => {
+    const accepted = async (result: unknown, returnedAt: string, allowSkip: boolean): Promise<void> => {
+      if (allowSkip && result === undefined) return; // documented unsupported reply: fallback is safe
+      const id = result && typeof result === "object" && "id" in result && typeof result.id === "string" && result.id.trim() ? result.id : undefined;
+      const control = kind === "react" || kind === "typing" || (kind === "app_update" && result === undefined);
+      if (!id && !control) {
+        await patch({ status: "unknown", deliveryState: "unknown", providerReturnedAt: returnedAt, lastError: "send_not_confirmed", nextAttemptAt: undefined });
+        return;
+      }
+      const session = extractAppCardSession(result) ?? editSession;
+      const current = await patch({ status: "sent", deliveryState: control ? "control_requested" : "provider_accepted", sentAt: returnedAt,
+        ...(kind !== "typing" ? { providerReturnedAt: returnedAt } : {}),
+        ...(!control ? { providerAcceptedAt: returnedAt, messageId: id } : {}),
+        ...(session ? { appSession: session } : {}),
+        metadataPending: ["poll", "app", "app_update", "attachment_group"].includes(kind),
+        lastError: undefined, nextAttemptAt: undefined, blockedBy: undefined });
+      if (!current) return;
+      if (!this.stopped && kind !== "react" && kind !== "typing") this.stopTypingAfterSend(item);
+      await this.repairOutboundMetadata(current);
+    };
+    // This continuation owns the invocation AND durable reconciliation. Its
+    // observer may time out, but shutdown tracks it through the storage commit.
+    const invoke = async (call: () => Promise<unknown>, allowSkip = false): Promise<unknown> => {
+      const work = Promise.resolve().then(async () => {
         if (this.stopped) throw new Error("runtime_stopping");
-        started = true; sdkInvoked = true;
+        sdkInvoked = true;
         const startedAt = latencyNow();
-        try { return call(); }
-        finally { recordLatency("sdkCallStartedAt", item.id, startedAt); }
-      }).then(result => {
-        if (started) recordLatency("providerReturnedAt", item.id);
+        let result: unknown;
+        try { const pending = call(); recordLatency("sdkCallStartedAt", item.id, startedAt); result = await pending; }
+        catch (error) {
+          recordLatency("providerReturnedAt", item.id);
+          await patch(isDefinitiveSendRejection(error)
+            ? { status: "failed", failedAt: new Date().toISOString(), lastError: "send_rejected_validation_or_auth", nextAttemptAt: undefined }
+            : { status: "unknown", deliveryState: "unknown", lastError: "send_outcome_unknown", nextAttemptAt: undefined });
+          throw error;
+        }
+        recordLatency("providerReturnedAt", item.id);
+        await accepted(result, new Date().toISOString(), allowSkip);
         return result;
-      }, error => {
-        if (started) recordLatency("providerReturnedAt", item.id);
-        throw error;
       });
       this.providerTasks.add(work);
       work.then(() => this.providerTasks.delete(work), () => this.providerTasks.delete(work));
       try { return await withDeadline(work, this.config.operationTimeoutMs ?? 30_000); }
       catch (error) { if (error instanceof OperationTimeout) invocationTimedOut = true; throw error; }
     };
-    const complete = async (
-      providerReturnedAt: string,
-      messageId?: string,
-      deliveryState: "provider_accepted" | "control_requested" = "provider_accepted",
-      hasProviderReturn = true,
-    ): Promise<void> => {
-      // Set before durable writes: an audit/storage failure after a known send
-      // must never route through the unknown-send retry/quarantine path.
-      providerCompleted = true;
-      await updateOutbound(item.id, {
-        status: "sent", deliveryState, attempts: nextAttempts,
-        sentAt: providerReturnedAt,
-        ...(hasProviderReturn ? { providerReturnedAt } : {}),
-        ...(deliveryState === "provider_accepted" ? { providerAcceptedAt: providerReturnedAt } : {}),
-        ...(messageId ? { messageId } : {}),
-        lastError: undefined, nextAttemptAt: undefined, blockedBy: undefined,
-      });
-      if (kind !== "react" && kind !== "typing") this.stopTypingAfterSend(item);
-    };
     try {
-      const dispatchStartedAt = new Date().toISOString();
-      await updateOutbound(item.id, { status: "sending", attempts: nextAttempts, dispatchStartedAt });
       const space = await lookup(this.resolveSpace(item.spaceId));
-
-      if (kind === "typing") {
-        if (item.kind !== "typing") throw new Error("typing kind mismatch");
-        if (item.state === "start") {
-          await this.startTypingBestEffort(item.spaceId);
-        } else {
-          await this.stopTypingBestEffort(item.spaceId);
-        }
-      } else if (kind === "react") {
-        if (item.kind !== "react") throw new Error("react kind mismatch");
+      if (this.stopped) throw new Error("runtime_stopping");
+      if (item.kind === "typing") {
+        if (item.state === "start") await this.startTypingBestEffort(item.spaceId);
+        else await this.stopTypingBestEffort(item.spaceId);
+        await accepted(undefined, new Date().toISOString(), false);
+      } else if (item.kind === "react") {
         const target = await lookup(space.getMessage(item.targetMessageId));
-        if (!target) {
-          throw new Error(`target message not found: ${item.targetMessageId}`);
-        }
-        // undefined = platform skipped reactions → treat as done (no retry loop)
+        if (!target) throw new Error("target_message_not_found");
         await invoke(() => target.react(item.emoji));
-        // Keep typing through a tapback; stop only on text/reply.
-      } else if (kind === "reply") {
-        if (item.kind !== "reply") throw new Error("reply kind mismatch");
-        const delivery = await sendReplyWithFallback(
-          {
-            getMessage: async id => {
-              const target = await lookup(space.getMessage(id));
-              return target ? { reply: text => invoke(() => target.reply(text)) } : undefined;
-            },
-            send: text => invoke(() => space.send(text)),
-          },
-          item.targetMessageId,
-          item.text,
-        );
-        if (delivery.status === "unknown") {
-          await this.quarantineSend(item.id, nextAttempts, delivery.reason);
-          return;
+      } else if (item.kind === "reply") {
+        const delivery = await sendReplyWithFallback({
+          getMessage: async id => { const target = await lookup(space.getMessage(id)); return target ? { reply: text => invoke(() => target.reply(text), true) } : undefined; },
+          send: text => invoke(() => space.send(text)),
+        }, item.targetMessageId, item.text);
+        if (delivery.status === "unknown") await patch({ status: "unknown", deliveryState: "unknown", lastError: "send_outcome_unknown", nextAttemptAt: undefined });
+        if (delivery.status === "failed") await patch({ status: "failed", failedAt: new Date().toISOString(), lastError: delivery.reason, nextAttemptAt: undefined });
+      } else if (item.kind === "voice") {
+        const payload = voice(item.audioPath, typeof item.durationSeconds === "number" ? { duration: item.durationSeconds } : {});
+        await invoke(() => space.send(payload));
+      } else if (item.kind === "poll") {
+        const payload = poll(item.title, item.options); await invoke(() => space.send(payload));
+      } else if (item.kind === "app" || item.kind === "app_update") {
+        const payload = item.live === true ? app(item.url, { live: true }) : app(item.url);
+        if (item.kind === "app") await invoke(() => space.send(payload));
+        else {
+          let target = await lookup(space.getMessage(item.targetMessageId));
+          if (!target) throw new Error("target_message_not_found");
+          target = await ensureAppCardSession(target, item.targetMessageId);
+          editSession = extractAppCardSession(target);
+          if (!editSession) { await patch({ status: "failed", failedAt: new Date().toISOString(), lastError: "missing_app_card_session" }); return; }
+          const edited = edit(payload, target); await invoke(() => space.send(edited));
         }
-        if (delivery.status === "failed") {
-          await updateOutbound(item.id, {
-            status: "failed",
-            attempts: nextAttempts,
-            failedAt: new Date().toISOString(),
-            lastError: delivery.reason,
-            nextAttemptAt: undefined,
-          });
-          log(`outbound dead-letter kind=reply id=${item.id} reason=${delivery.reason}`);
-          return;
-        }
-        if (delivery.mode === "fallback") {
-          log(`outbound reply fallback id=${item.id} reason=${delivery.replyError}`);
-        }
-        await complete(delivery.providerReturnedAt, delivery.messageId);
-      } else if (kind === "voice") {
-        if (item.kind !== "voice") throw new Error("voice kind mismatch");
-        const sent = await invoke(() => space.send(
-          voice(item.audioPath, {
-            ...(typeof item.durationSeconds === "number"
-              ? { duration: item.durationSeconds }
-              : {}),
-          }),
-        ));
-        const providerReturnedAt = new Date().toISOString();
-        if (sent === undefined) {
-          await this.quarantineSend(item.id, nextAttempts, "undefined-result", providerReturnedAt);
-          return;
-        }
-        await complete(providerReturnedAt, sent.id);
-        log(
-          `outbound sent kind=voice id=${item.id} space=${item.spaceId} messageId=${sent.id} path=${item.audioPath}`,
-        );
-        return;
-      } else if (kind === "poll") {
-        if (item.kind !== "poll") throw new Error("poll kind mismatch");
-        const sent = await invoke(() => space.send(poll(item.title, item.options)));
-        const providerReturnedAt = new Date().toISOString();
-        if (sent === undefined) {
-          await this.quarantineSend(item.id, nextAttempts, "undefined-result", providerReturnedAt);
-          return;
-        }
-        await complete(providerReturnedAt, sent.id);
-        try {
-          await savePollMeta(sent.id, item.title, item.options);
-        } catch (err) {
-          log(`poll meta save failed messageId=${sent.id}`);
-        }
-        log(`outbound sent kind=poll id=${item.id} space=${item.spaceId} messageId=${sent.id}`);
-        return;
-      } else if (kind === "app") {
-        if (item.kind !== "app") throw new Error("app kind mismatch");
-        const live = item.live === true;
-        const sent = await invoke(() => space.send(
-          live ? app(item.url, { live: true }) : app(item.url),
-        ));
-        const providerReturnedAt = new Date().toISOString();
-        if (sent === undefined) {
-          await this.quarantineSend(item.id, nextAttempts, "undefined-result", providerReturnedAt);
-          return;
-        }
-        await complete(providerReturnedAt, sent.id);
-        try {
-          const session = extractAppCardSession(sent);
-          if (session) {
-            await saveAppCardSession(sent.id, session, {
-              live,
-              url: item.url,
-            });
-          }
-        } catch (err) {
-          log(`app session save failed messageId=${sent.id}`);
-        }
-        log(
-          `outbound sent kind=app id=${item.id} space=${item.spaceId} messageId=${sent.id} live=${live}`,
-        );
-        return;
-      } else if (kind === "app_update") {
-        if (item.kind !== "app_update") throw new Error("app_update kind mismatch");
-        const live = item.live === true;
-        let target = await lookup(space.getMessage(item.targetMessageId));
-        if (!target) {
-          throw new Error(`target message not found: ${item.targetMessageId}`);
-        }
-        target = await ensureAppCardSession(target, item.targetMessageId);
-        if (!extractAppCardSession(target)) {
-          await updateOutbound(item.id, { status: "failed", attempts: nextAttempts, failedAt: new Date().toISOString(), lastError: "missing_app_card_session" });
-          return;
-        }
-        const sent = await invoke(() => space.send(
-          edit(live ? app(item.url, { live: true }) : app(item.url), target),
-        ));
-        const providerReturnedAt = new Date().toISOString();
-        // Undefined edits are completed control requests, not accepted messages.
-        await complete(providerReturnedAt, sent?.id, sent === undefined ? "control_requested" : "provider_accepted");
-        try {
-          const session = extractAppCardSession(target);
-          if (session) {
-            await saveAppCardSession(item.targetMessageId, session, {
-              live,
-              url: item.url,
-            });
-          }
-        } catch (err) {
-          log(
-            `app_update session save failed messageId=${item.targetMessageId}`,
-          );
-        }
-        log(
-          `outbound sent kind=app_update id=${item.id} space=${item.spaceId} target=${item.targetMessageId} live=${live} result=${sent === undefined ? "undefined" : "ok"}`,
-        );
-        return;
-      } else if (kind === "attachment_group") {
-        if (item.kind !== "attachment_group") {
-          throw new Error("attachment_group kind mismatch");
-        }
+      } else if (item.kind === "attachment_group") {
         const paths = item.attachmentPaths;
-        if (paths.length < 2) {
-          throw new Error("attachment_group requires at least 2 paths");
-        }
-        // Keep as ONE Spectrum group so iMessage provider uses sendMultipart
-        // (upload each → attachmentGuid parts → single sendMultipart). Do not
-        // expand into space.send(attachment, attachment, ...) — that is N messages.
-        const payload = group(
-          attachment(paths[0]!),
-          attachment(paths[1]!),
-          ...paths.slice(2).map((p) => attachment(p)),
-        );
-        const sent = await invoke(() => space.send(payload));
-        const providerReturnedAt = new Date().toISOString();
-        if (sent === undefined) {
-          await this.quarantineSend(item.id, nextAttempts, "undefined-result", providerReturnedAt);
-          return;
-        }
-        await complete(providerReturnedAt, sent.id);
-        const parentMessageId = sent.id;
-        let parts: AttachmentGroupPart[] | undefined;
-        let batchId = item.batchId;
-        try {
-          const mapped = await persistAttachmentGroupMapping({
-            outboundId: item.id,
-            spaceId: item.spaceId,
-            parentMessageId,
-            paths,
-            batchId: item.batchId,
-            cards: item.cards,
-          });
-          parts = mapped.parts;
-          batchId = mapped.batchId;
-          log(
-            `attachment_group presentation saved batchId=${mapped.batchId} messageId=${parentMessageId} parts=${mapped.parts.length}`,
-          );
-        } catch (err) {
-          log(
-            `attachment_group presentation save failed id=${item.id} messageId=${parentMessageId}`,
-          );
-        }
-        await updateOutbound(item.id, {
-          ...(batchId ? { batchId } : {}),
-          ...(parts ? { parts } : {}),
-        });
-        log(
-          `outbound sent kind=attachment_group id=${item.id} space=${item.spaceId} count=${paths.length} messageId=${parentMessageId}`,
-        );
-        return;
+        if (paths.length < 2) throw new Error("attachment_group_requires_two_paths");
+        const payload = group(attachment(paths[0]!), attachment(paths[1]!), ...paths.slice(2).map(p => attachment(p)));
+        await invoke(() => space.send(payload));
       } else {
-        // text (missing kind treated as text)
-        const textItem = item as Extract<OutboundItem, { kind?: "text" }>;
-        let payload: Parameters<Space["send"]>[0] = textItem.attachmentPath
-          ? attachment(textItem.attachmentPath)
-          : textItem.text;
-        if (textItem.effect) {
-          const effectId = resolveMessageEffect(textItem.effect);
-          payload = effect(payload, effectId as never);
-          log(
-            `outbound effect=${textItem.effect} id=${item.id} space=${item.spaceId}`,
-          );
-        }
-        const sent = await invoke(() => space.send(payload));
-        const providerReturnedAt = new Date().toISOString();
-        if (sent === undefined) {
-          await this.quarantineSend(item.id, nextAttempts, "undefined-result", providerReturnedAt);
-          return;
-        }
-        await complete(providerReturnedAt, sent.id);
+        let payload: Parameters<Space["send"]>[0] = item.attachmentPath ? attachment(item.attachmentPath) : item.text;
+        if (item.effect) payload = effect(payload, resolveMessageEffect(item.effect) as never);
+        await invoke(() => space.send(payload));
       }
-
-      // Best-effort typing may swallow a timeout/failure, so its wrapper return
-      // is not evidence of a provider return. Reactions await the SDK directly.
-      if (!providerCompleted) await complete(new Date().toISOString(), undefined, "control_requested", kind !== "typing");
-      log(`outbound sent kind=${kind} id=${item.id} space=${item.spaceId}`);
     } catch (error) {
-      if (providerCompleted) {
-        log(`outbound completion bookkeeping failed kind=${kind} id=${item.id}`);
-        return;
-      }
-      if (isDefinitiveSendRejection(error)) await updateOutbound(item.id, { status: "failed", attempts: nextAttempts, failedAt: new Date().toISOString(), lastError: "send_rejected_validation_or_auth", nextAttemptAt: undefined });
-      else if (sdkInvoked) await this.quarantineSend(item.id, nextAttempts, "send-threw");
-      else await this.retryBeforeSend(item.id, nextAttempts, error);
+      if (sdkInvoked) {
+        // The invocation owns definitive outcomes. Only an observation timeout
+        // needs an interim unknown record; CAS cannot downgrade late success.
+        if (invocationTimedOut) await patch({ status: "unknown", deliveryState: "unknown", lastError: "send_outcome_unknown", nextAttemptAt: undefined });
+      } else await this.retryBeforeSend(item, error);
       log(`outbound failure kind=${kind} id=${item.id}`);
     } finally {
       if (invocationTimedOut) void this.stop().catch(() => {});
     }
   }
 
-  private async retryBeforeSend(id: string, attempts: number, error: unknown): Promise<void> {
+  private async retryBeforeSend(item: OutboundItem, error: unknown): Promise<void> {
     const failure = error as { name?: string; status?: number; message?: string };
-    const permanent = ["ValidationError", "AuthenticationError", "AuthorizationError", "UnauthorizedError", "ForbiddenError"].includes(failure?.name ?? "") || [401, 403].includes(failure?.status ?? 0) || ["unverified_conversation", "runtime_stopping"].includes(failure?.message ?? "");
-    if (permanent || attempts >= 3) {
-      await updateOutbound(id, { status: "failed", attempts, failedAt: new Date().toISOString(), lastError: permanent ? "pre_send_validation_or_auth_failed" : "pre_send_retry_exhausted", nextAttemptAt: undefined });
-    } else {
-      await updateOutbound(id, { status: "queued", attempts, lastError: "pre_send_retry_pending", nextAttemptAt: new Date(Date.now() + 250 * 4 ** (attempts - 1)).toISOString() });
-    }
+    const permanent = ["ValidationError", "AuthenticationError", "AuthorizationError", "UnauthorizedError", "ForbiddenError"].includes(failure?.name ?? "") || [401, 403].includes(failure?.status ?? 0) || failure?.message === "unverified_conversation";
+    const patch: Partial<OutboundItem> = permanent
+      ? { status: "failed", failedAt: new Date().toISOString(), lastError: "pre_send_validation_or_auth_failed", nextAttemptAt: undefined }
+      : this.stopped || failure?.message === "runtime_stopping"
+      ? { status: "queued", attempts: item.attempts - 1, lastError: "lifecycle_deferred_before_send", nextAttemptAt: undefined }
+      : item.attempts >= 3
+      ? { status: "failed", failedAt: new Date().toISOString(), lastError: "pre_send_retry_exhausted", nextAttemptAt: undefined }
+      : { status: "queued", lastError: "pre_send_retry_pending", nextAttemptAt: new Date(Date.now() + 250 * 4 ** (item.attempts - 1)).toISOString() };
+    await updateOutbound(item.id, patch, item.attemptId);
   }
 
-  private async quarantineSend(
-    id: string,
-    nextAttempts: number,
-    lastError: string,
-    providerReturnedAt?: string,
-  ): Promise<void> {
-    await updateOutbound(id, {
-      status: "unknown",
-      deliveryState: "unknown",
-      attempts: nextAttempts,
-      ...(providerReturnedAt ? { providerReturnedAt } : {}),
-      lastError: lastError === "undefined-result" ? "send_not_confirmed" : "send_outcome_unknown",
-      nextAttemptAt: undefined,
-    });
-    log(`outbound quarantined id=${id} reason=send_outcome_unknown`);
+  /** Derived metadata is repairable from accepted evidence, never by resending. */
+  private async repairOutboundMetadata(item: OutboundItem): Promise<void> {
+    if (item.status !== "sent" || !item.metadataPending) return;
+    try {
+      if (item.kind === "poll" && item.messageId) await savePollMeta(item.messageId, item.title, item.options);
+      if (item.kind === "app" || item.kind === "app_update") {
+        const id = item.kind === "app_update" ? item.targetMessageId : item.messageId;
+        if (!id || !item.appSession) return;
+        await saveAppCardSession(id, item.appSession, { live: item.live, url: item.url });
+      }
+      let mapping: Partial<OutboundItem> = {};
+      if (item.kind === "attachment_group" && item.messageId) {
+        const mapped = await persistAttachmentGroupMapping({ outboundId: item.id, spaceId: item.spaceId, parentMessageId: item.messageId, paths: item.attachmentPaths, batchId: item.batchId, cards: item.cards });
+        mapping = { parts: mapped.parts, batchId: mapped.batchId };
+      }
+      await updateOutbound(item.id, { ...mapping, metadataPending: false }, item.attemptId);
+    } catch { log(`outbound metadata repair pending id=${item.id}`); }
   }
 
   private async resolveSpace(spaceId: string, lineId?: string): Promise<Space> {

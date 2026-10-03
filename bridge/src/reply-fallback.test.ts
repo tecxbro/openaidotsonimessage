@@ -65,3 +65,14 @@ const ambiguous = await sendReplyWithFallback({
 }, "original", "hello");
 assert(ambiguous.status === "unknown", "unknown reply is quarantined");
 assert(duplicateCalls === 0, "never duplicate ambiguous reply");
+
+const { expect, test } = await import('bun:test');
+test('a reply result without a usable message ID stays unknown and never falls back', async () => {
+  let sends = 0;
+  const result = await sendReplyWithFallback({ getMessage: async () => ({ reply: async () => ({ id: '' }) }), send: async () => { sends++; return { id: 'duplicate' }; } }, 'target', 'answer');
+  expect(result.status).toBe('unknown'); expect(sends).toBe(0);
+});
+test('lifecycle cancellation before reply invocation propagates to the runtime', async () => {
+  const result = sendReplyWithFallback({ getMessage: async () => ({ reply: async () => { throw new Error('runtime_stopping'); } }), send: async () => ({ id: 'bad' }) }, 'target', 'answer');
+  await expect(result).rejects.toThrow('runtime_stopping');
+});

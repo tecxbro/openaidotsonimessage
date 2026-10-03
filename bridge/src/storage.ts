@@ -457,11 +457,15 @@ export async function enqueueOutbound(
 export async function updateOutbound(
   id: string,
   patch: Partial<OutboundItem>,
+  attemptId?: string,
 ): Promise<OutboundItem | undefined> {
   return withLock(async () => {
     const file = await readJson<QueueFile>(OUTBOUND_QUEUE_PATH, { items: [] });
     const item = file.items.find((row) => row.id === id);
     if (!item) return undefined;
+    if (attemptId && item.attemptId !== attemptId) return undefined;
+    // Observer timeout/rejection cannot downgrade definitive acceptance.
+    if (attemptId && item.status === "sent" && patch.status && patch.status !== "sent") return item;
     Object.assign(item, patch);
     if (item.messageId) {
       const receipts = await readJson<Record<string, string>>(join(DATA_DIR, "receipt-targets.json"), {});
@@ -470,6 +474,18 @@ export async function updateOutbound(
     }
     await atomicWriteJson(OUTBOUND_QUEUE_PATH, file);
     await appendJsonl(OUTBOUND_LOG, { event: "update", item });
+    return item;
+  });
+}
+
+/** Only the queue pump may select an action. CAS makes old snapshots harmless. */
+export async function beginOutboundAttempt(id: string, attempts: number): Promise<OutboundItem | undefined> {
+  return withLock(async () => {
+    const file = await readJson<QueueFile>(OUTBOUND_QUEUE_PATH, { items: [] });
+    const item = file.items.find(row => row.id === id);
+    if (!item || item.status !== "queued" || item.attempts !== attempts) return undefined;
+    Object.assign(item, { status: "sending", attempts: attempts + 1, attemptId: randomUUID(), dispatchStartedAt: new Date().toISOString(), blockedBy: undefined });
+    await atomicWriteJson(OUTBOUND_QUEUE_PATH, file);
     return item;
   });
 }
