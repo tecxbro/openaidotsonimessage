@@ -46,7 +46,8 @@ function parseDirectReply(raw: string): DirectReplyRequest {
  * not delivery; completed claims return already_completed without a new send. */
 export async function replyToBatch(request: DirectReplyRequest) {
   const { batchId, owner, actionId, text } = request;
-  const existing = await readBatchClaim(batchId);
+  // Preserve the CLI's live-claim rejection while making corruption explicit.
+  const existing = await readBatchClaim(batchId).catch(() => { throw new Error('live_claim_required: corrupt_or_unreadable_batch_claim'); });
   if (existing?.state === 'completed' && existing.owner === owner) {
     return { ok: false, reason: 'already_completed', claim: existing };
   }

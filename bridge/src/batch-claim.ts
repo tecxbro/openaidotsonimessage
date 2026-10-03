@@ -16,7 +16,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { acquireFileLock, withFileLock } from "./file-lock.ts";
 import { createHash } from "node:crypto";
-import { readUnreadBatch } from "./storage.ts";
+import { readUnreadBatch, loadOutboundQueue } from "./storage.ts";
 import { DATA_DIR } from "./types.ts";
 
 export const DEFAULT_CLAIM_LEASE_MS = 15 * 60 * 1000;
@@ -43,26 +43,17 @@ function claimPath(batchId: string): string {
   return join(CLAIMS_DIR, `${batchId}.json`);
 }
 
-function isExistError(err: unknown): boolean {
-  const e = err as NodeJS.ErrnoException;
-  return (
-    e?.code === "EEXIST" ||
-    e?.errno === -17 ||
-    (typeof e?.message === "string" && e.message.includes("EEXIST"))
-  );
-}
-
 async function readClaim(batchId: string): Promise<BatchClaim | null> {
   const path = claimPath(batchId);
   if (!existsSync(path)) return null;
   try {
     const raw = await readFile(path, "utf8");
-    if (!raw.trim()) return null;
+    if (!raw.trim()) throw new Error();
     const claim = JSON.parse(raw) as BatchClaim;
-    if (claim.batchId !== batchId || typeof claim.owner !== "string" || !["claimed", "completed", "released"].includes(claim.state) || !Number.isFinite(Date.parse(claim.updatedAt)) || !Number.isFinite(Date.parse(claim.claimedAt)) || !Number.isFinite(Date.parse(claim.leaseExpiresAt))) return null;
+    if (!claim || typeof claim !== "object" || Array.isArray(claim) || claim.batchId !== batchId || typeof claim.owner !== "string" || !claim.owner.trim() || (claim.spaceIds !== undefined && (!Array.isArray(claim.spaceIds) || claim.spaceIds.some(id => typeof id !== "string" || !id.trim()))) || !["claimed", "completed", "released"].includes(claim.state) || [claim.updatedAt, claim.claimedAt, claim.leaseExpiresAt].some(value => typeof value !== "string") || (claim.note !== undefined && typeof claim.note !== "string") || !Number.isFinite(Date.parse(claim.updatedAt)) || !Number.isFinite(Date.parse(claim.claimedAt)) || !Number.isFinite(Date.parse(claim.leaseExpiresAt))) throw new Error();
     return claim;
   } catch {
-    return null;
+    throw new Error("corrupt_or_unreadable_batch_claim");
   }
 }
 
@@ -102,11 +93,21 @@ async function rebuildOwners(guard: () => void = () => {}): Promise<Conversation
   for (const name of await readdir(CLAIMS_DIR).catch(() => [])) {
     guard();
     if (!name.endsWith(".json") || name === "conversation-owners.json") continue;
-    const claim = await readClaim(name.slice(0, -5));
+    const claim = await readClaim(name.slice(0, -5)).catch(() => null);
     if (!claim || claim.state !== "claimed" || leaseExpired(claim)) continue;
     for (const spaceId of claim.spaceIds ?? await batchSpaces(claim.batchId)) {
       const key = createHash("sha256").update(spaceId).digest("hex");
       (owners[key] ??= []).push({ batchId: claim.batchId, owner: claim.owner, leaseExpiresAt: claim.leaseExpiresAt });
+    }
+  }
+  // Never discard reservations backed by unreadable ownership records. Their
+  // leases cannot authorize work; only explicit evidence-based reconciliation
+  // may retire them. Missing claims cannot have authorized an enqueue.
+  if (existsSync(OWNERS_PATH)) {
+    const previous = JSON.parse(await readFile(OWNERS_PATH, "utf8")) as ConversationOwners;
+    for (const [key, reservations] of Object.entries(previous)) for (const row of reservations) {
+      try { await readClaim(row.batchId); }
+      catch { (owners[key] ??= []).push(row); }
     }
   }
   guard();
@@ -166,53 +167,30 @@ async function tryClaimBatchUnlocked(
   }
   if (existing?.state === "completed") return { ok: false, reason: "already_completed", claim: existing };
   if (existing?.state === "claimed" && existing.owner !== owner && !leaseExpired(existing)) return { ok: false, reason: "owned_by_other", claim: existing };
-  const conflict = await reserveConversations(batchId, owner, leaseExpiresAt, assertCanProceed);
-  if (conflict) return { ok: false, reason: "owned_by_other", claim: conflict };
-  if (existing) {
-    if (existing.owner === owner && existing.state === "claimed") {
-      const refreshed: BatchClaim = {
-        ...existing,
-        updatedAt: nowIso,
-        leaseExpiresAt,
-      };
-      assertCanProceed();
-      await atomicWriteFile(path, `${JSON.stringify(refreshed, null, 2)}\n`, assertCanProceed);
-      recordLatency("claimedAt", batchId);
-      return { ok: true, claim: refreshed, resumed: true };
-    }
-    if (!leaseExpired(existing, now)) {
-      return { ok: false, reason: "owned_by_other", claim: existing };
-    }
-    assertCanProceed();
-    await unlink(path).catch(() => undefined);
-  }
-
-  const claim: BatchClaim = {
-    batchId,
-    owner,
-    state: "claimed",
-    claimedAt: nowIso,
-    updatedAt: nowIso,
-    leaseExpiresAt,
-    spaceIds: await batchSpaces(batchId),
-  };
-
+  if (existing && existing.state !== "claimed" && !leaseExpired(existing, now)) return { ok: false, reason: "owned_by_other", claim: existing };
+  const priorOwners = await loadOwners(assertCanProceed);
+  let published = false;
   try {
+    const conflict = await reserveConversations(batchId, owner, leaseExpiresAt, assertCanProceed);
+    if (conflict) return { ok: false, reason: "owned_by_other", claim: conflict };
+    const resumed = existing?.owner === owner && existing.state === "claimed";
+    const claim: BatchClaim = resumed ? { ...existing, updatedAt: nowIso, leaseExpiresAt } : {
+      batchId, owner, state: "claimed", claimedAt: nowIso, updatedAt: nowIso, leaseExpiresAt, spaceIds: await batchSpaces(batchId),
+    };
     assertCanProceed();
-    await writeExclusiveFile(path, `${JSON.stringify(claim, null, 2)}\n`);
+    const body = `${JSON.stringify(claim, null, 2)}\n`;
+    if (existing) await atomicWriteFile(path, body, assertCanProceed);
+    else await writeExclusiveFile(path, body, assertCanProceed);
+    published = true;
     recordLatency("claimedAt", batchId);
-    return { ok: true, claim, resumed: false };
-  } catch (err) {
-    if (!isExistError(err)) throw err;
-    // Race: another creator won. Never rethrow EEXIST.
-    const raced = await readClaim(batchId);
-    if (raced?.state === "completed") {
-      return { ok: false, reason: "already_completed", claim: raced };
+    return { ok: true, claim, resumed };
+  } finally {
+    if (!published) {
+      // If sync failed after atomic publication, the valid claim is visible.
+      // Preserve its reservation; otherwise restore the complete prior state.
+      const current = await readClaim(batchId).catch(() => undefined);
+      if (!current || current.updatedAt !== nowIso || current.owner !== owner) await saveOwners(priorOwners);
     }
-    if (raced?.owner === owner) {
-      return { ok: true, claim: raced, resumed: true };
-    }
-    return { ok: false, reason: "owned_by_other", claim: raced };
   }
 }
 
@@ -269,7 +247,9 @@ export async function markBatchClaimCompleted(batchId: string, owner: string, no
 }
 
 export async function assertLiveBatchClaim(batchId: string, owner: string): Promise<void> {
-  const claim = await readClaim(batchId);
+  let claim: BatchClaim | null;
+  try { claim = await readClaim(batchId); }
+  catch { throw new Error("live_claim_required: corrupt_or_unreadable_batch_claim"); }
   if (!claim || claim.owner !== owner || claim.state !== "claimed" || leaseExpired(claim)) throw new Error("live_claim_required");
 }
 export async function withLiveBatchClaim<T>(batchId: string, owner: string, fn: () => Promise<T>): Promise<T> {
@@ -298,21 +278,41 @@ export async function tryClaimBatchNow(batchId: string, owner: string, shouldPro
     return await tryClaimBatchUnlocked(batchId, owner, DEFAULT_CLAIM_LEASE_MS, guard);
   } catch (error) {
     if (error instanceof ClaimGuardClosed) {
-      // A guard can close after reservation publication but before a new claim.
-      // Remove only this uncommitted reservation while still holding the lock.
-      if (!await readClaim(batchId) && existsSync(OWNERS_PATH)) {
-        const owners = await loadOwners();
-        let changed = false;
-        for (const key of Object.keys(owners)) {
-          const before = owners[key]!.length;
-          owners[key] = owners[key]!.filter(row => row.batchId !== batchId || row.owner !== owner);
-          changed ||= owners[key]!.length !== before;
-          if (!owners[key]!.length) delete owners[key];
-        }
-        if (changed) await saveOwners(owners);
-      }
       return null;
     }
     throw error;
   } finally { await release(); }
+}
+
+/** Deliberate offline reconciliation, never automatic stealing/reprocessing.
+ * A corrupt claim remains blocking unless queue acceptance (the completion
+ * contract) or a runtime-handled batch supplies durable result evidence. */
+export async function reconcileCorruptBatchClaim(batchId: string, owner: string): Promise<{ resolved: boolean; evidence: string[] }> {
+  const path = claimPath(batchId);
+  return withFileLock(join(CLAIMS_DIR, '.claims-lock'), async () => {
+    try { await readClaim(batchId); throw new Error('corrupt_claim_required'); }
+    catch (error) { if (!(error instanceof Error) || error.message !== 'corrupt_or_unreadable_batch_claim') throw error; }
+    const owners = await loadOwners();
+    const reservations = Object.values(owners).flat().filter(row => row.batchId === batchId);
+    if (!owner.trim() || reservations.some(row => row.owner !== owner)) throw new Error('reconciliation_owner_mismatch');
+    const batch = await readUnreadBatch(batchId);
+    const actions = (await loadOutboundQueue()).filter(item => (item.requestId?.startsWith(`${batchId}:`) || item.requestId === `cards:${batchId}`) && batch.messages.some(message => message.spaceId === item.spaceId));
+    const evidence = batch.handledBy ? ['runtime-handled-batch'] : actions.filter(item => item.requestHash || item.canonicalRequestHash).map(item => item.id);
+    if (!evidence.length) return { resolved: false, evidence };
+    const corrupt = await readFile(path, 'utf8');
+    const archive = join(CLAIMS_DIR, `${batchId}.corrupt`);
+    if (existsSync(archive)) {
+      if (await readFile(archive, 'utf8') !== corrupt) throw new Error('corrupt_claim_archive_conflict');
+    } else await writeExclusiveFile(archive, corrupt);
+    const at = new Date().toISOString();
+    const completed: BatchClaim = { batchId, owner, state: 'completed', claimedAt: at, updatedAt: at, leaseExpiresAt: at, spaceIds: await batchSpaces(batchId), note: `corrupt claim reconciled from durable results: ${evidence.join(',')}` };
+    await atomicWriteFile(path, JSON.stringify(completed));
+    for (const key of Object.keys(owners)) {
+      owners[key] = owners[key]!.filter(row => row.batchId !== batchId);
+      if (!owners[key]!.length) delete owners[key];
+    }
+    await saveOwners(owners);
+    await unlink(join(DATA_DIR, 'dot-inbox', `${batchId}.json`)).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });
+    return { resolved: true, evidence };
+  });
 }
