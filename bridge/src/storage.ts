@@ -494,21 +494,32 @@ export async function enqueueOutbound(
 ): Promise<OutboundItem[]> {
   validateOutboundInput(input);
   if (input.kind === "attachment_group" && input.batchId) requestId = `cards:${input.batchId}`;
+  const hash = createHash("sha256").update(stableJson(input)).digest("hex");
+  const legacyHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
+  const existingRequest = (file: QueueFile): OutboundItem[] | undefined => {
+    if (!requestId) return;
+    const existing = file.items.filter(item => item.requestId === requestId);
+    if (!existing.length) return;
+    if (existing.some(item => item.requestHash !== hash && item.requestHash !== legacyHash && item.canonicalRequestHash !== hash)) throw new Error("idempotency_key_content_mismatch");
+    return existing;
+  };
+  if (requestId) {
+    const existing = await withLock(async () => {
+      if (authorize) await authorize();
+      return existingRequest(await readJson<QueueFile>(OUTBOUND_QUEUE_PATH, { items: [] }));
+    });
+    if (existing) return existing;
+  }
   const normalized = await normalizeEnqueueAttachments(input);
   const items = buildOutboundItems(normalized);
-
   return await withLock(async () => {
     const file = await readJson<QueueFile>(OUTBOUND_QUEUE_PATH, { items: [] });
     if (authorize) await authorize();
-    if (requestId) {
-      const existing = file.items.filter(item => item.requestId === requestId);
-      const hash = createHash("sha256").update(stableJson(input)).digest("hex");
-      const legacyHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
-      if (existing.length) {
-        if (existing.some(item => item.requestHash && item.requestHash !== hash && item.requestHash !== legacyHash && item.canonicalRequestHash !== hash)) throw new Error("idempotency_key_content_mismatch");
-        return existing;
-      }
-      for (const item of items) { item.requestId = requestId; item.requestHash = legacyHash; item.canonicalRequestHash = hash; }
+    // Recheck after preparation: another process may have accepted this key.
+    const existing = existingRequest(file);
+    if (existing) return existing;
+    if (requestId) for (const item of items) {
+      item.requestId = requestId; item.requestHash = legacyHash; item.canonicalRequestHash = hash;
     }
     file.items.push(...items);
     await atomicWriteJson(OUTBOUND_QUEUE_PATH, file);
