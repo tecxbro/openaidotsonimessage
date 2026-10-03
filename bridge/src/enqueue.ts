@@ -36,7 +36,6 @@ const USAGE =
   "  bun run enqueue -- --space-id <spaceId> --voice <audioPath> [--duration <seconds>]\n" +
   "  bun run enqueue -- --space-id <spaceId> --app-url <url> [--live]\n" +
   "  bun run enqueue -- --space-id <spaceId> --app-update <messageId> --app-url <url> [--live]\n" +
-  "  bun run enqueue -- --space-id <spaceId> --typing start|stop\n" +
   "note: --effect applies to --text / single --attachment only (not --reply-to) for v1.\n" +
   "note: effect names: slam,loud,gentle,invisible,confetti,fireworks,balloons,heart,lasers,celebration,sparkles,spotlight,echo\n" +
   "note: two or more --attachment flags enqueue ONE attachment_group (Spectrum group → iMessage sendMultipart).\n" +

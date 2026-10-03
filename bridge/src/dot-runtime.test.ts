@@ -114,12 +114,12 @@ describe('existing runtime through dot host', () => {
     await runtime.stop(); await running; await runtime.stop();
     expect(calls).toBe(1); expect(stopped).toBe(1);
   });
-  test('marks read, preserves question, queues once-only confetti and durable wake', async () => {
+  test('preserves question without read controls, queues once-only confetti and durable wake', async () => {
     const f = fixture();
     await rm(SETUP_CONFETTI_MARKER_PATH, { force: true });
     try {
       await f.probe.onMessage(f.space, f.message('first')); await f.probe.flushPending();
-      expect(f.readCount()).toBe(1);
+      expect(f.readCount()).toBe(0);
       expect((await pendingDotBatches())[0]!.messages[0]!.text).toBe('please do the actual task');
       expect((await loadOutboundQueue()).filter(x => x.kind === 'text' && x.effect === 'confetti').length).toBe(1);
       await f.probe.onMessage(f.space, f.message('second', { type: 'text', text: 'okay' })); await f.probe.flushPending();
@@ -162,7 +162,7 @@ describe('existing runtime through dot host', () => {
       expect(job.streamReceivedAt).toBe(original);
     } finally { await f.runtime.stop(); }
   });
-  test('accepted sends and early receipts persist before slow typing cleanup; the next send progresses', async () => {
+  test('accepted sends and early passive receipts persist without invoking typing cleanup', async () => {
     const f = fixture(); let calls = 0; let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
     (f.space as unknown as { stopTyping: () => Promise<void> }).stopTyping = () => gate;
@@ -193,20 +193,13 @@ describe('existing runtime through dot host', () => {
       await f.runtime.stop();
       const audit = (await readFile(join(DATA_DIR, 'outbound.jsonl'), 'utf8')).trim().split('\n').map(row => JSON.parse(row));
       const timings = audit.filter(row => row.event === 'typing_cleanup' && [first!.id, second!.id].includes(row.id));
-      expect(timings).toHaveLength(2);
-      for (const timing of timings) {
-        const item = items.find(i => i.id === timing.id)!;
-        expect(timing.outcome).toBe('completed');
-        expect(Date.parse(timing.settledAt)).toBeGreaterThanOrEqual(releasedAt);
-        expect(Date.parse(item.providerAcceptedAt!)).toBeLessThan(Date.parse(timing.settledAt));
-        expect(timing).not.toHaveProperty('item'); expect(timing).not.toHaveProperty('text');
-      }
+      expect(timings).toEqual([]);
       await recoverDurableState();
       expect((await loadOutboundQueue()).find(i => i.id === first!.id)!.deliveryState).toBe('read');
       expect(calls).toBe(2);
     } finally { release(); await f.runtime.stop(); }
   });
-  test('never-resolving typing cleanup times out without holding sends or reclassifying acceptance', async () => {
+  test('removed typing cleanup never delays sends or shutdown', async () => {
     const f = fixture();
     (f.space as unknown as { stopTyping: () => Promise<void> }).stopTyping = () => new Promise(() => {});
     await f.probe.onMessage(f.space, f.message('source'));
@@ -222,9 +215,9 @@ describe('existing runtime through dot host', () => {
     expect(items.map(i => i.deliveryState)).toEqual(['provider_accepted', 'provider_accepted']);
     expect(items.map(i => i.attempts)).toEqual([1, 1]);
     const timings = (await readFile(join(DATA_DIR, 'outbound.jsonl'), 'utf8')).trim().split('\n').map(row => JSON.parse(row)).filter(row => row.event === 'typing_cleanup');
-    expect(timings.map(row => row.outcome)).toEqual(['timeout', 'timeout']);
+    expect(timings).toEqual([]);
   }, 10_000);
-  test('rejected typing cleanup cannot leak provider errors or change an accepted result', async () => {
+  test('removed typing cleanup is never invoked and cannot change acceptance', async () => {
     const f = fixture();
     (f.space as unknown as { stopTyping: () => Promise<void> }).stopTyping = async () => { throw new Error('CREDENTIAL_SENTINEL_typing'); };
     await f.probe.onMessage(f.space, f.message('source'));
@@ -234,7 +227,7 @@ describe('existing runtime through dot host', () => {
     expect(sent.status).toBe('sent'); expect(sent.messageId).toBe('sent-1');
     expect(sent.deliveryState).toBe('provider_accepted'); expect(sent.lastError).toBeUndefined();
     const audit = await readFile(join(DATA_DIR, 'outbound.jsonl'), 'utf8');
-    expect(audit).not.toContain('CREDENTIAL_SENTINEL'); expect(audit).toContain('"outcome":"failed"');
+    expect(audit).not.toContain('CREDENTIAL_SENTINEL'); expect(audit).not.toContain('"event":"typing_cleanup"');
   });
   test('undefined sends and rejected sends never gain acceptance timestamps', async () => {
     for (const mode of ['undefined', 'throw'] as const) {
@@ -280,17 +273,9 @@ describe('existing runtime through dot host', () => {
       }
     } finally { await f.runtime.stop(); }
   });
-  test('a swallowed typing failure is only a requested control, without a fabricated SDK return', async () => {
-    const f = fixture();
-    (f.space as unknown as { stopTyping: () => Promise<void> }).stopTyping = async () => { throw new Error('private control error'); };
-    try {
-      await f.probe.onMessage(f.space, f.message('source'));
-      const [item] = await enqueueOutbound({ kind: 'typing', spaceId: 'space', state: 'stop' });
-      await f.probe.sendOutbound(item!);
-      const sent = (await loadOutboundQueue()).find(i => i.id === item!.id)!;
-      expect(sent.deliveryState).toBe('control_requested'); expect(sent.status).toBe('sent');
-      expect(sent.providerReturnedAt).toBeUndefined(); expect(sent.providerAcceptedAt).toBeUndefined();
-    } finally { await f.runtime.stop(); }
+  test('outgoing typing enqueue is explicitly disabled', async () => {
+    await expect(enqueueOutbound({ kind: 'typing', spaceId: 'space', state: 'stop' })).rejects.toThrow('outgoing_control_disabled');
+    expect(await loadOutboundQueue()).toEqual([]);
   });
   test('unsupported app edits and missing sessions never fabricate provider acceptance', async () => {
     const f = fixture();

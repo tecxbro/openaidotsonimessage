@@ -185,7 +185,7 @@ bun run dot-agent -- status
 
 `enqueue` requires an unexpired claim owned by this task and a `spaceId` present in the original batch. Reply/reaction/edit targets must also be known in that batch or its verified outbound conversation. The claims lock stays held through commit-time revalidation. It derives the idempotency key `<batchId>:<actionId>`; card groups with a `batchId` use the centrally shared `cards:<batchId>` key for both direct enqueue and the watchdog. Retry the **same logical action with the same actionId and unchanged input JSON**; an existing matching key returns its existing outbound records. New records also retain an input hash: changing the input with the same key is rejected as `idempotency_key_content_mismatch`, not treated as an edit. Do not mint a new actionId to retry an uncertain send.
 
-The `input` schema is `EnqueueOutboundInput` in `bridge/src/types.ts`. Supported variants are text/effect/attachment, reply, react, poll, voice, typing, attachment group, app, and app update. Examples of the fields to put inside `input`:
+The `input` schema is `EnqueueOutboundInput` in `bridge/src/types.ts`. Supported new actions are text/effect/attachment, reply, react, poll, voice, attachment group, app, and app update. Legacy typing records remain readable but are explicitly failed as `outgoing_control_disabled`; new typing enqueue is rejected. Examples of the fields to put inside `input`:
 
 | Kind | Required fields besides `spaceId` |
 | --- | --- |
@@ -194,7 +194,6 @@ The `input` schema is `EnqueueOutboundInput` in `bridge/src/types.ts`. Supported
 | `react` | `targetMessageId`, `emoji` |
 | `poll` | `title`, `options` |
 | `voice` | `audioPath`; optional `text`, `durationSeconds` |
-| `typing` | `state`: `start` or `stop` |
 | `attachment_group` | `attachmentPaths`; provide aligned `cards` and `batchId` for option mapping |
 | `app` | `url`; optional `live` |
 | `app_update` | `targetMessageId`, `url`; optional `live` |
@@ -345,3 +344,6 @@ Ordinary committed input schedules publication immediately. The runtime coalesce
 The one existing sender watches the data directory for atomic queue replacement before its initial scan. A notification requests a coalesced drain; the drain immediately reconciles durable state again after sending. The 500 ms timer remains recovery for missed events. Directory watching follows the [Node filesystem caveats](https://nodejs.org/api/fs.html#caveats), including missing filenames and inode replacement.
 
 Image producers close all final files, write complete ordered metadata to a draft outside `cards-ready/`, and run `bun run src/cards-complete.ts <draft.json>`. Atomic publication triggers the validated final-enqueue path immediately. The explicit marker requires an exact count and aligned metadata, and verifies the original conversation. It has no 3-second or 12-second delay. Legacy disk scanning retains the 12-second stability heuristic and periodic recovery. Invalid explicit markers cannot fall through to disk inference. All options stay one group using `cards:<batchId>`, including a simultaneous direct enqueue. Legacy markers may omit metadata; new publication commands require it.
+
+## Outgoing controls removed
+The runtime no longer calls message.read(), startTyping() or stopTyping(), including automatic flush and post-send cleanup. New typing actions reject explicitly; retained legacy typing records fail explicitly instead of fabricating a control/acceptance result. Passive inbound receipt observation and early-receipt reconciliation remain active. Reactions and threaded replies retain their original action workflows. Historical typing-cleanup observations above describe older snapshots only.
