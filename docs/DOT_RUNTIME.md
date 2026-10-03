@@ -185,7 +185,7 @@ bun run dot-agent -- status
 
 `enqueue` requires an unexpired claim owned by this task and a `spaceId` present in the original batch. Reply/reaction/edit targets must also be known in that batch or its verified outbound conversation. The claims lock stays held through commit-time revalidation. It derives the idempotency key `<batchId>:<actionId>`; card groups with a `batchId` use the centrally shared `cards:<batchId>` key for both direct enqueue and the watchdog. Retry the **same logical action with the same actionId and unchanged input JSON**; an existing matching key returns its existing outbound records. New records also retain an input hash: changing the input with the same key is rejected as `idempotency_key_content_mismatch`, not treated as an edit. Do not mint a new actionId to retry an uncertain send.
 
-The `input` schema is `EnqueueOutboundInput` in `bridge/src/types.ts`. Supported new actions are text/effect/attachment, reply, react, poll, voice, attachment group, app, and app update. Legacy typing records remain readable but are explicitly failed as `outgoing_control_disabled`; new typing enqueue is rejected. Examples of the fields to put inside `input`:
+The `input` schema is `EnqueueOutboundInput` in `bridge/src/types.ts`. Supported variants are text/effect/attachment, reply, react, poll, voice, typing, attachment group, app, and app update. Examples of the fields to put inside `input`:
 
 | Kind | Required fields besides `spaceId` |
 | --- | --- |
@@ -194,6 +194,7 @@ The `input` schema is `EnqueueOutboundInput` in `bridge/src/types.ts`. Supported
 | `react` | `targetMessageId`, `emoji` |
 | `poll` | `title`, `options` |
 | `voice` | `audioPath`; optional `text`, `durationSeconds` |
+| `typing` | `state`: `start` or `stop` |
 | `attachment_group` | `attachmentPaths`; provide aligned `cards` and `batchId` for option mapping |
 | `app` | `url`; optional `live` |
 | `app_update` | `targetMessageId`, `url`; optional `live` |
@@ -247,7 +248,7 @@ New inbound records carry `streamReceivedAt`, captured at the bridge's SDK strea
 
 New outbound records carry `dispatchStartedAt` (before storage/space lookup), `providerReturnedAt` (when the awaited SDK send returns), and `providerAcceptedAt` only for a successful send result. Message `sentAt` now equals the SDK return time rather than later typing cleanup. These times do not prove device delivery; `readAt` remains separate. The dispatch-to-return interval includes local storage, lookup, conversion/upload and SDK work, so it is not an exact Photon network-call duration. Best-effort typing controls omit `providerReturnedAt` because their wrapper can swallow a failure or timeout.
 
-In the older timing snapshot, accepted status and the provider message ID were persisted before ancillary typing cleanup. That snapshot detached cleanup from queue progress and bounded it to five seconds. Outgoing typing/read controls have since been removed as described below. Its content-free `outbound.jsonl` event is `{event:"typing_cleanup", id, startedAt, settledAt, outcome}`; outcome is `completed`, `failed` or `timeout`. A timeout bounds bridge bookkeeping but cannot cancel an already-issued SDK control, which has no cancellation parameter. The provider is closed on runtime shutdown. This does not bound other provider sends or media work.
+Accepted status and the provider message ID are persisted before ancillary typing cleanup. Cleanup runs independently of queue progress and its observer is bounded to five seconds. Its content-free `outbound.jsonl` event is `{event:"typing_cleanup", id, startedAt, settledAt, outcome}`; outcome is `completed`, `failed` or `timeout`. A timeout bounds bridge bookkeeping but cannot cancel an already-issued SDK control, which has no cancellation parameter. The provider is closed on runtime shutdown. Other provider sends and media work have the separate bounds described below.
 
 No debounce default or prompt changed. Historical records cannot retroactively separate ingress/storage or send/cleanup time. The reviewed timing implementation is loaded in the replacement runtime. Its owner confirmed the prior process had exited before starting the sole replacement on unchanged private state; the prior exit was code 1 with no observed graceful-shutdown log, so it is not described as graceful. Fresh stage-timed live performance remains unmeasured.
 
@@ -345,8 +346,10 @@ The one existing sender watches the data directory for atomic queue replacement 
 
 Image producers close all final files, write complete ordered metadata to a draft outside `cards-ready/`, and run `bun run src/cards-complete.ts <draft.json>`. Atomic publication triggers the validated final-enqueue path immediately. The explicit marker requires an exact count and aligned metadata, and verifies the original conversation. It has no 3-second or 12-second delay. Legacy disk scanning retains the 12-second stability heuristic and periodic recovery. Invalid explicit markers cannot fall through to disk inference. All options stay one group using `cards:<batchId>`, including a simultaneous direct enqueue. Legacy markers may omit metadata; new publication commands require it.
 
-## Outgoing controls removed
-The runtime no longer calls message.read(), startTyping() or stopTyping(), including automatic flush and post-send cleanup. New typing actions reject explicitly; retained legacy typing records fail explicitly instead of fabricating a control/acceptance result. Passive inbound receipt observation and early-receipt reconciliation remain active. Reactions and threaded replies retain their original action workflows. Historical typing-cleanup observations above describe older snapshots only.
+## Typing and read controls
+Stable Spectrum 12.10.1 supports `message.read()` and `space.startTyping()` / `space.stopTyping()` as sugar over the content pipeline. Authorized inbound text is marked read after durable acceptance; admitted media is marked read before heavy processing. Ordinary batch publication starts typing independently of persistence and host pickup. Typing refreshes every 20 seconds and stops on a response, the existing 120-second presence timeout, or shutdown. Tapbacks preserve typing. New and retained queued `typing` actions use the same runtime owner.
+
+These ancillary calls do not delay input publication, accepted-send persistence or the next message send. Their observers are bounded; the underlying operations stay tracked through provider teardown, and unresolved work prevents a successful ownership handoff. A delayed typing start cannot re-arm its heartbeat after a response or shutdown. Passive inbound read receipts and early-receipt reconciliation remain active. SDK control completion does not prove visible phone behavior. See the Stable [typing](https://photon.codes/docs/spectrum-ts/content/typing-indicators) and [read](https://photon.codes/docs/spectrum-ts/content/read) documentation.
 
 ## Recovery, failure bounds and timing evidence
 Completed claim records remain in `batch-claims/`, while their inbox notices retire only after completion publication. Recovery skips their wake reconstruction. Missing or corrupt completion records remain unfinished; historical inbound, outbound, receipt and reaction-target evidence is retained. The derived `conversation-owners.json` index is rebuilt at runtime startup and lazily bootstrapped for existing claims. Claim reservations and completion updates share the claims lock, so a different task cannot acquire a later batch in a live owner's conversation. No state deletion or database migration is required for rollback.

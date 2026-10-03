@@ -14,6 +14,10 @@ import { effect, imessage } from "@spectrum-ts/imessage";
 import type { AttachmentGroupPart, Config, InboundRecord, OutboundItem } from "./types.ts";
 import { isDefinitiveSendRejection, sendReplyWithFallback } from "./reply-fallback.ts";
 import {
+  TYPING_HEARTBEAT_MS,
+  TYPING_TIMEOUT_MS,
+} from "./types.ts";
+import {
   shapeInboundContent,
   unwrapInboundContent,
   type InboundMessageMetadata,
@@ -48,6 +52,7 @@ import {
   savePollMeta,
   loadPollMeta,
   recordReadReceipt,
+  recordTypingCleanup,
   saveConversationContext,
   loadConversationContext,
   saveAppCardSession,
@@ -87,7 +92,9 @@ function resolveMessageEffect(name: string): string {
 }
 
 
+const TYPING_STOP_TIMEOUT_MS = 5_000;
 type MaintenanceOperation = "outbound_drain" | "webhook_drain" | "cards_ready";
+type TypingStopTiming = { startedAt: string; settledAt: string; outcome: "completed" | "failed" | "timeout" };
 
 type MessageWithAppSession = Message & {
   miniAppCardSession?: AppCardSession;
@@ -147,6 +154,10 @@ export class GpProofRuntime {
   private commits: Promise<void> = Promise.resolve();
   private inboundTasks = new Map<string, Promise<void>>();
   private webhookActive = new Set<string>();
+  private typingStops = new Map<string, Promise<TypingStopTiming>>();
+  private typingCleanupTasks = new Set<Promise<void>>();
+  private controlTasks = new Set<Promise<unknown>>();
+  private typingEpochs = new Map<string, number>();
   private readonly shutdownSignal = new AbortController();
   private readonly mediaLimiter: MediaJobLimiter;
   private mediaWork = new Set<Promise<unknown>>();
@@ -160,8 +171,20 @@ export class GpProofRuntime {
     this.commits = run.then(() => undefined, () => undefined);
     return run;
   }
+  /** Spaces where we showed typing after flush; cleared on first outbound or timeout. */
+  private typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Refresh startTyping while waiting for first text/reply. */
+  private typingHeartbeats = new Map<string, ReturnType<typeof setInterval>>();
+
   private readonly onSigint = () => { void this.stop("SIGINT").catch(() => {}); };
   private readonly onSigterm = () => { void this.stop("SIGTERM").catch(() => {}); };
+
+  /** Keep underlying controls owned until they settle or provider teardown completes. */
+  private trackControl<T>(work: Promise<T>): Promise<T> {
+    this.controlTasks.add(work);
+    work.then(() => this.controlTasks.delete(work), () => this.controlTasks.delete(work));
+    return work;
+  }
 
   /** Every ignored task settles successfully after recording a safe diagnostic. */
   private observeBackground(operation: DiagnosticOperation, work: () => Promise<unknown>): Promise<void> {
@@ -309,6 +332,10 @@ export class GpProofRuntime {
     if (this.outboundTimer) clearInterval(this.outboundTimer);
     if (this.webhookTimer) clearInterval(this.webhookTimer);
     if (this.cardsReadyTimer) clearInterval(this.cardsReadyTimer);
+    for (const spaceId of [...this.typingTimers.keys()]) {
+      const stop = this.stopTypingBestEffort(spaceId);
+      void this.observeBackground("typing_control", () => stop);
+    }
     const grace = this.config.shutdownGraceMs ?? 6_000;
     const deadline = performance.now() + grace;
     const remaining = () => Math.max(0, deadline - performance.now());
@@ -320,7 +347,7 @@ export class GpProofRuntime {
       catch (error) { stopFailed = true; stopError = error; }
     }
     const work = () => [this.outboundDrain, ...this.maintenance.values(), ...this.webhookTasks,
-      ...this.providerTasks, ...this.mediaWork];
+      ...this.typingCleanupTasks, ...this.typingStops.values(), ...this.controlTasks, ...this.providerTasks, ...this.mediaWork];
     const settled = inboundSettled && await settleWithin(work(), remaining());
     // Pinned Spectrum stop tears down its provider clients. A deadline alone
     // cannot transfer ownership while an old SDK invocation can still act.
@@ -410,6 +437,10 @@ export class GpProofRuntime {
     await saveConversationContext(space.id, { senderId, lineId: (space as Space & { phone?: string }).phone });
     const contextSavedAt = new Date().toISOString();
     this.spaces.set(space.id, space);
+    if (mediaJob) {
+
+      void this.observeBackground("read_control", () => this.markReadBestEffort(message));
+    }
 
     let attachmentExtras:
       | {
@@ -554,7 +585,17 @@ export class GpProofRuntime {
       `queued inbound kind=${record.kind ?? "text"} id=${message.id} space=${space.id}`,
     );
     if (mediaJob) await saveMediaJob({ ...mediaJob, state: "done" });
+    else void this.observeBackground("read_control", () => this.markReadBestEffort(message));
     this.scheduleFlush();
+  }
+
+  private async markReadBestEffort(message: Message): Promise<void> {
+    if (this.stopped) return;
+    try {
+      const work = this.trackControl(message.read());
+      await withDeadline(work, 5_000);
+      log(`marked read id=${message.id}`);
+    } catch { log(`mark read unavailable id=${message.id}`); }
   }
 
   private scheduleFlush(): void {
@@ -602,6 +643,12 @@ export class GpProofRuntime {
         return;
       }
 
+      // Ancillary controls run independently of durable publication and host pickup.
+      const spaceIds = [...new Set(messages.map((m) => m.spaceId))];
+      if (!this.stopped) for (const spaceId of spaceIds) {
+        void this.observeBackground("typing_control", () => this.startTypingBestEffort(spaceId));
+      }
+
       if (this.config.hostMode === "dot-local") await this.postWebhook(batchId);
       else this.notifyWebhook(batchId);
     } finally {
@@ -643,6 +690,111 @@ export class GpProofRuntime {
         `greeting fast-path batchId=${batchId} space=${spaceId} reply=${JSON.stringify(reply)}`,
       );
     }
+  }
+
+  private async startTypingBestEffort(spaceId: string): Promise<void> {
+    if (this.stopped) return;
+    const epoch = this.typingEpochs.get(spaceId) ?? 0;
+    try {
+      const work = this.trackControl((async () => {
+        const space = await this.resolveSpace(spaceId);
+        if (this.stopped || epoch !== (this.typingEpochs.get(spaceId) ?? 0)) return;
+        await space.startTyping();
+        // A response or shutdown during this call must not re-arm typing afterward.
+        if (this.stopped || epoch !== (this.typingEpochs.get(spaceId) ?? 0)) {
+          await this.typingStops.get(spaceId);
+          await this.stopTypingBestEffort(spaceId);
+          return;
+        }
+        const prev = this.typingTimers.get(spaceId);
+        if (prev) clearTimeout(prev);
+        this.typingTimers.set(
+          spaceId,
+          setTimeout(() => {
+            void this.observeBackground("typing_control", () => this.stopTypingBestEffort(spaceId));
+          }, TYPING_TIMEOUT_MS),
+        );
+        // iMessage typing fades; refresh until first text/reply or timeout.
+        if (!this.typingHeartbeats.has(spaceId)) {
+          this.typingHeartbeats.set(
+            spaceId,
+            setInterval(() => {
+              void this.observeBackground("typing_control", async () => {
+                try {
+                  const refresh = this.trackControl((async () => {
+                    const s = await this.resolveSpace(spaceId);
+                    if (this.stopped || !this.typingTimers.has(spaceId)) return;
+                    const refreshEpoch = this.typingEpochs.get(spaceId) ?? 0;
+                    await s.startTyping();
+                    if (this.stopped || refreshEpoch !== (this.typingEpochs.get(spaceId) ?? 0)) {
+                      await this.typingStops.get(spaceId);
+                      await this.stopTypingBestEffort(spaceId);
+                    }
+                  })());
+                  await withDeadline(refresh, 5_000);
+                  log(`typing heartbeat space=${spaceId}`);
+                } catch (err) {
+                  log(`typing heartbeat failed space=${spaceId}`);
+                }
+              });
+            }, TYPING_HEARTBEAT_MS),
+          );
+        }
+        log(`typing start space=${spaceId}`);
+      })());
+      await withDeadline(work, 5_000);
+    } catch (err) {
+      log(`typing start failed space=${spaceId}`);
+    }
+  }
+
+  private stopTypingBestEffort(spaceId: string): Promise<TypingStopTiming> {
+    this.typingEpochs.set(spaceId, (this.typingEpochs.get(spaceId) ?? 0) + 1);
+    const prev = this.typingTimers.get(spaceId);
+    if (prev) clearTimeout(prev);
+    this.typingTimers.delete(spaceId);
+    const beat = this.typingHeartbeats.get(spaceId);
+    if (beat) clearInterval(beat);
+    this.typingHeartbeats.delete(spaceId);
+    const existing = this.typingStops.get(spaceId);
+    if (existing) return existing;
+
+    const startedAt = new Date().toISOString();
+    const run = (async (): Promise<TypingStopTiming> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let settled = false;
+      let outcome: TypingStopTiming["outcome"];
+      try {
+        const timeout = new Promise<"timeout">((resolve) => {
+          timer = setTimeout(() => resolve("timeout"), TYPING_STOP_TIMEOUT_MS);
+        });
+        const control = this.trackControl((async (): Promise<"completed" | "timeout"> => {
+          const space = await this.resolveSpace(spaceId);
+          // A late space lookup must not start a new control after the deadline.
+          if (settled) return "timeout";
+          await space.stopTyping();
+          return "completed";
+        })());
+        // The SDK has no cancellation signal for this control. Timeout bounds
+        // our bookkeeping; app.stop() closes the provider on runtime shutdown.
+        outcome = await Promise.race([control, timeout]);
+      } catch { outcome = "failed"; }
+      finally { settled = true; if (timer) clearTimeout(timer); }
+      log(`typing stop ${outcome} space=${spaceId}`);
+      return { startedAt, settledAt: new Date().toISOString(), outcome };
+    })();
+    const tracked = run.finally(() => this.typingStops.delete(spaceId));
+    this.typingStops.set(spaceId, tracked);
+    return tracked;
+  }
+
+  /** Ancillary control cannot hold the send queue or change a persisted send outcome. */
+  private stopTypingAfterSend(item: OutboundItem): void {
+    const task = this.stopTypingBestEffort(item.spaceId)
+      .then(timing => recordTypingCleanup(item.id, timing))
+      .catch(() => log(`typing cleanup audit unavailable id=${item.id}`))
+      .finally(() => this.typingCleanupTasks.delete(task));
+    this.typingCleanupTasks.add(task);
   }
 
   private async postWebhook(batchId: string): Promise<void> {
@@ -778,16 +930,21 @@ export class GpProofRuntime {
         ...(messageId ? { messageId } : {}),
         lastError: undefined, nextAttemptAt: undefined, blockedBy: undefined,
       });
+      if (kind !== "react" && kind !== "typing") this.stopTypingAfterSend(item);
     };
     try {
       const dispatchStartedAt = new Date().toISOString();
       await updateOutbound(item.id, { status: "sending", attempts: nextAttempts, dispatchStartedAt });
-      if (kind === "typing") {
-        await updateOutbound(item.id, { status: "failed", attempts: nextAttempts, failedAt: new Date().toISOString(), lastError: "outgoing_control_disabled", nextAttemptAt: undefined });
-        return;
-      }
       const space = await lookup(this.resolveSpace(item.spaceId));
-      if (kind === "react") {
+
+      if (kind === "typing") {
+        if (item.kind !== "typing") throw new Error("typing kind mismatch");
+        if (item.state === "start") {
+          await this.startTypingBestEffort(item.spaceId);
+        } else {
+          await this.stopTypingBestEffort(item.spaceId);
+        }
+      } else if (kind === "react") {
         if (item.kind !== "react") throw new Error("react kind mismatch");
         const target = await lookup(space.getMessage(item.targetMessageId));
         if (!target) {
@@ -795,6 +952,7 @@ export class GpProofRuntime {
         }
         // undefined = platform skipped reactions → treat as done (no retry loop)
         await invoke(() => target.react(item.emoji));
+        // Keep typing through a tapback; stop only on text/reply.
       } else if (kind === "reply") {
         if (item.kind !== "reply") throw new Error("reply kind mismatch");
         const delivery = await sendReplyWithFallback(
@@ -999,8 +1157,9 @@ export class GpProofRuntime {
         await complete(providerReturnedAt, sent.id);
       }
 
-      // Reactions are awaited SDK control requests, distinct from acceptance.
-      if (!providerCompleted) await complete(new Date().toISOString(), undefined, "control_requested");
+      // Best-effort typing may swallow a timeout/failure, so its wrapper return
+      // is not evidence of a provider return. Reactions await the SDK directly.
+      if (!providerCompleted) await complete(new Date().toISOString(), undefined, "control_requested", kind !== "typing");
       log(`outbound sent kind=${kind} id=${item.id} space=${item.spaceId}`);
     } catch (error) {
       if (providerCompleted) {

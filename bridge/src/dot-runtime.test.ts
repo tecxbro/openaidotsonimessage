@@ -114,12 +114,12 @@ describe('existing runtime through dot host', () => {
     await runtime.stop(); await running; await runtime.stop();
     expect(calls).toBe(1); expect(stopped).toBe(1);
   });
-  test('preserves question without read controls, queues once-only confetti and durable wake', async () => {
+  test('marks read, preserves question, queues once-only confetti and durable wake', async () => {
     const f = fixture();
     await rm(SETUP_CONFETTI_MARKER_PATH, { force: true });
     try {
       await f.probe.onMessage(f.space, f.message('first')); await f.probe.flushPending();
-      expect(f.readCount()).toBe(0);
+      expect(f.readCount()).toBe(1);
       expect((await pendingDotBatches())[0]!.messages[0]!.text).toBe('please do the actual task');
       expect((await loadOutboundQueue()).filter(x => x.kind === 'text' && x.effect === 'confetti').length).toBe(1);
       await f.probe.onMessage(f.space, f.message('second', { type: 'text', text: 'okay' })); await f.probe.flushPending();
@@ -162,7 +162,7 @@ describe('existing runtime through dot host', () => {
       expect(job.streamReceivedAt).toBe(original);
     } finally { await f.runtime.stop(); }
   });
-  test('accepted sends and early passive receipts persist without invoking typing cleanup', async () => {
+  test('accepted sends and early receipts persist before slow typing cleanup; the next send progresses', async () => {
     const f = fixture(); let calls = 0; let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
     (f.space as unknown as { stopTyping: () => Promise<void> }).stopTyping = () => gate;
@@ -193,15 +193,25 @@ describe('existing runtime through dot host', () => {
       await f.runtime.stop();
       const audit = (await readFile(join(DATA_DIR, 'outbound.jsonl'), 'utf8')).trim().split('\n').map(row => JSON.parse(row));
       const timings = audit.filter(row => row.event === 'typing_cleanup' && [first!.id, second!.id].includes(row.id));
-      expect(timings).toEqual([]);
+      expect(timings).toHaveLength(2);
+      for (const timing of timings) {
+        const item = items.find(i => i.id === timing.id)!;
+        expect(timing.outcome).toBe('completed');
+        expect(Date.parse(timing.settledAt)).toBeGreaterThanOrEqual(releasedAt);
+        expect(Date.parse(item.providerAcceptedAt!)).toBeLessThan(Date.parse(timing.settledAt));
+        expect(timing).not.toHaveProperty('item'); expect(timing).not.toHaveProperty('text');
+      }
       await recoverDurableState();
       expect((await loadOutboundQueue()).find(i => i.id === first!.id)!.deliveryState).toBe('read');
       expect(calls).toBe(2);
     } finally { release(); await f.runtime.stop(); }
   });
-  test('removed typing cleanup never delays sends or shutdown', async () => {
+  test('never-resolving typing cleanup times out without holding sends or reclassifying acceptance', async () => {
     const f = fixture();
-    (f.space as unknown as { stopTyping: () => Promise<void> }).stopTyping = () => new Promise(() => {});
+    let release!: () => void;
+    const control = new Promise<void>(resolve => { release = resolve; });
+    (f.space as unknown as { stopTyping: () => Promise<void> }).stopTyping = () => control;
+    (f.runtime as unknown as { app: { stop(): Promise<void> } }).app = { stop: async () => { release(); } };
     await f.probe.onMessage(f.space, f.message('source'));
     const [first] = await enqueueOutbound({ spaceId: 'space', text: 'first answer' });
     const [second] = await enqueueOutbound({ spaceId: 'space', text: 'second answer' });
@@ -210,14 +220,14 @@ describe('existing runtime through dot host', () => {
     expect(Date.now() - started).toBeLessThan(1500);
     expect(f.sendCount()).toBe(2);
     await f.runtime.stop();
-    expect(Date.now() - started).toBeLessThan(6500);
+    expect(Date.now() - started).toBeLessThan(7500);
     const items = (await loadOutboundQueue()).filter(i => [first!.id, second!.id].includes(i.id));
     expect(items.map(i => i.deliveryState)).toEqual(['provider_accepted', 'provider_accepted']);
     expect(items.map(i => i.attempts)).toEqual([1, 1]);
     const timings = (await readFile(join(DATA_DIR, 'outbound.jsonl'), 'utf8')).trim().split('\n').map(row => JSON.parse(row)).filter(row => row.event === 'typing_cleanup');
-    expect(timings).toEqual([]);
+    expect(timings.map(row => row.outcome)).toEqual(['timeout', 'timeout']);
   }, 10_000);
-  test('removed typing cleanup is never invoked and cannot change acceptance', async () => {
+  test('rejected typing cleanup cannot leak provider errors or change an accepted result', async () => {
     const f = fixture();
     (f.space as unknown as { stopTyping: () => Promise<void> }).stopTyping = async () => { throw new Error('CREDENTIAL_SENTINEL_typing'); };
     await f.probe.onMessage(f.space, f.message('source'));
@@ -227,7 +237,7 @@ describe('existing runtime through dot host', () => {
     expect(sent.status).toBe('sent'); expect(sent.messageId).toBe('sent-1');
     expect(sent.deliveryState).toBe('provider_accepted'); expect(sent.lastError).toBeUndefined();
     const audit = await readFile(join(DATA_DIR, 'outbound.jsonl'), 'utf8');
-    expect(audit).not.toContain('CREDENTIAL_SENTINEL'); expect(audit).not.toContain('"event":"typing_cleanup"');
+    expect(audit).not.toContain('CREDENTIAL_SENTINEL'); expect(audit).toContain('"outcome":"failed"');
   });
   test('undefined sends and rejected sends never gain acceptance timestamps', async () => {
     for (const mode of ['undefined', 'throw'] as const) {
@@ -273,9 +283,17 @@ describe('existing runtime through dot host', () => {
       }
     } finally { await f.runtime.stop(); }
   });
-  test('outgoing typing enqueue is explicitly disabled', async () => {
-    await expect(enqueueOutbound({ kind: 'typing', spaceId: 'space', state: 'stop' })).rejects.toThrow('outgoing_control_disabled');
-    expect(await loadOutboundQueue()).toEqual([]);
+  test('a swallowed typing failure is only a requested control, without a fabricated SDK return', async () => {
+    const f = fixture();
+    (f.space as unknown as { stopTyping: () => Promise<void> }).stopTyping = async () => { throw new Error('private control error'); };
+    try {
+      await f.probe.onMessage(f.space, f.message('source'));
+      const [item] = await enqueueOutbound({ kind: 'typing', spaceId: 'space', state: 'stop' });
+      await f.probe.sendOutbound(item!);
+      const sent = (await loadOutboundQueue()).find(i => i.id === item!.id)!;
+      expect(sent.deliveryState).toBe('control_requested'); expect(sent.status).toBe('sent');
+      expect(sent.providerReturnedAt).toBeUndefined(); expect(sent.providerAcceptedAt).toBeUndefined();
+    } finally { await f.runtime.stop(); }
   });
   test('unsupported app edits and missing sessions never fabricate provider acceptance', async () => {
     const f = fixture();
@@ -359,12 +377,55 @@ describe('existing runtime through dot host', () => {
     expect(calls).toBe(1);
     expect((await loadOutboundQueue()).find(x => x.id === second!.id)!.status).toBe('queued');
   });
-  test('a never-resolving read control cannot delay durable text or shutdown', async () => {
+  test('a held read control does not delay durable text and settles through provider teardown', async () => {
     const f = fixture(); const message = f.message('hung-read');
-    (message as unknown as { read: () => Promise<void> }).read = () => new Promise(() => {});
+    let release!: () => void;
+    const control = new Promise<void>(resolve => { release = resolve; });
+    (message as unknown as { read: () => Promise<void> }).read = () => control;
+    (f.runtime as unknown as { app: { stop(): Promise<void> } }).app = { stop: async () => { release(); } };
+    // Use a short shutdown grace to exercise teardown without a real provider.
+    (f.runtime as unknown as { config: { shutdownGraceMs: number } }).config.shutdownGraceMs = 30;
     await f.probe.onMessage(f.space, message); await f.probe.flushPending();
     expect((await pendingDotBatches())[0]!.messages[0]!.id).toBe('hung-read');
     const start = Date.now(); await f.runtime.stop(); expect(Date.now() - start).toBeLessThan(1000);
+  });
+  test('authorized work starts typing, tapbacks preserve it, and a response stops it', async () => {
+    const f = fixture(); let starts = 0; let stops = 0;
+    (f.space as unknown as { startTyping(): Promise<void> }).startTyping = async () => { starts++; };
+    (f.space as unknown as { stopTyping(): Promise<void> }).stopTyping = async () => { stops++; };
+    (f.space as unknown as { getMessage(): Promise<{ react(): Promise<undefined> }> }).getMessage = async () => ({ react: async () => undefined });
+    try {
+      await f.probe.onMessage(f.space, f.message('source'));
+      await f.probe.flushPending();
+      for (let i = 0; i < 100 && starts === 0; i++) await Bun.sleep(2);
+      expect(starts).toBeGreaterThan(0); expect(f.readCount()).toBe(1);
+      const [reaction] = await enqueueOutbound({ kind: 'react', spaceId: 'space', targetMessageId: 'source', emoji: '❤️' });
+      await f.probe.sendOutbound(reaction!); expect(stops).toBe(0);
+      const [answer] = await enqueueOutbound({ spaceId: 'space', text: 'substantive answer' });
+      await f.probe.sendOutbound(answer!); await f.runtime.stop();
+      expect(stops).toBeGreaterThan(0); expect(f.sendCount()).toBe(1);
+      expect((f.runtime as unknown as { typingHeartbeats: Map<string, unknown> }).typingHeartbeats.size).toBe(0);
+    } finally { await f.runtime.stop(); }
+  });
+  test('a typing start that settles after the reply cannot re-arm its heartbeat', async () => {
+    const f = fixture(); const events: string[] = []; let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    (f.space as unknown as { startTyping(): Promise<void> }).startTyping = async () => { events.push('start'); await gate; events.push('start-return'); };
+    (f.space as unknown as { stopTyping(): Promise<void> }).stopTyping = async () => { events.push('stop'); };
+    try {
+      await f.probe.onMessage(f.space, f.message('source'));
+      await f.probe.flushPending();
+      for (let i = 0; i < 100 && events.length === 0; i++) await Bun.sleep(2);
+      expect(events).toEqual(['start']);
+      const [answer] = await enqueueOutbound({ spaceId: 'space', text: 'answer' });
+      await f.probe.sendOutbound(answer!);
+      release();
+      const probe = f.runtime as unknown as { controlTasks: Set<Promise<unknown>>; typingHeartbeats: Map<string, unknown> };
+      for (let i = 0; i < 100 && probe.controlTasks.size > 0; i++) await Bun.sleep(2);
+      expect(probe.controlTasks.size).toBe(0); expect(probe.typingHeartbeats.size).toBe(0);
+      expect(events.at(-1)).toBe('stop');
+      expect(events.lastIndexOf('stop')).toBeGreaterThan(events.indexOf('start-return'));
+    } finally { release(); await f.runtime.stop(); }
   });
   test('provider error text cannot leak into persisted media records', async () => {
     const f = fixture();

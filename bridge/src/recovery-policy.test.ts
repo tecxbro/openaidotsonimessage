@@ -157,7 +157,7 @@ describe("provider-event cutoff at bridge ingress", () => {
       const records = batches.flatMap(batch => batch.messages);
       expect(records.map(m => m.id)).toEqual(["fresh-text", "fresh-media"]);
       expect(records.map(m => m.timestamp)).toEqual([NEW_TIME, NEW_TIME]);
-      expect(f.counts().reads).toBe(0);
+      expect(f.counts().reads).toBe(2);
       expect(f.counts().downloads).toBe(1);
       const job = JSON.parse(await readFile(join(DATA_DIR, "media-jobs", "fresh-media.json"), "utf8"));
       expect(job.recoveryEventTimestamp).toBe(NEW_TIME);
@@ -179,7 +179,7 @@ describe("provider-event cutoff at bridge ingress", () => {
       await second.probe.onMessage(f.space, f.message("old-after-restart", new Date("2025-12-31")));
       await second.probe.onMessage(f.space, f.message("new-after-restart", new Date("2026-01-01T00:00:02Z")));
     } finally { await second.stop(); }
-    expect(f.counts().reads).toBe(0);
+    expect(f.counts().reads).toBe(2);
     expect((await readFile(join(DATA_DIR, "inbound.jsonl"), "utf8")).trim().split("\n")).toHaveLength(2);
     expect(await readFile(policyPath, "utf8")).toBe(before);
     expect(await loadOutboundQueue()).toEqual([]);

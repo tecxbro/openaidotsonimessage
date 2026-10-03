@@ -2,6 +2,11 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 export const PREFIX = process.env.DEPLOY_ID_PREFIX || "dot";
+/** Best-effort typing indicator timeout after unread flush. */
+/** Keep showing typing until first text/reply, refreshing periodically. */
+export const TYPING_TIMEOUT_MS = 120_000;
+/** Re-send startTyping so iMessage indicator does not die mid-wait. */
+export const TYPING_HEARTBEAT_MS = 20_000;
 const ROOT = dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = process.env.BRIDGE_DATA_DIR || join(ROOT, "../data");
 export const ENV_PATH = join(ROOT, "../.env");

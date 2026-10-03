@@ -133,18 +133,33 @@ test('a media deadline leaves a visible pending identity and does not release it
   } finally { release(); await held; await f.runtime.stop(); }
 });
 
- test('legacy queued typing records fail explicitly without invoking any SDK control', async () => {
+test('legacy queued typing records use the restored control without claiming message acceptance', async () => {
   const { writeFile } = await import('node:fs/promises');
   const { join } = await import('node:path');
-  const f = fixture(); let lookups = 0;
-  f.probe.resolveSpace = async () => { lookups++; return f.space; };
+  const f = fixture(); let starts = 0;
+  (f.space as unknown as { startTyping(): Promise<void> }).startTyping = async () => { starts++; };
   const item: OutboundItem = { id: 'legacy-typing', spaceId: 'space', kind: 'typing', state: 'start', createdAt: new Date().toISOString(), status: 'queued', attempts: 0 };
   await writeFile(join(DATA_DIR, 'outbound-queue.json'), JSON.stringify({ items: [item] }));
   try {
     await f.probe.drainOutbound();
     const result = (await loadOutboundQueue())[0]!;
-    expect(result.status).toBe('failed'); expect(result.lastError).toBe('outgoing_control_disabled');
+    expect(result.status).toBe('sent'); expect(result.deliveryState).toBe('control_requested');
+    expect(result.lastError).toBeUndefined();
     expect(result.providerReturnedAt).toBeUndefined(); expect(result.providerAcceptedAt).toBeUndefined();
-    expect(lookups).toBe(0); expect(f.calls()).toBe(0);
+    expect(starts).toBe(1); expect(f.calls()).toBe(0);
   } finally { await f.runtime.stop(); }
+});
+
+test('a held read control preserves input but refuses an unsafe shutdown handoff', async () => {
+  const f = fixture({ shutdownGraceMs: 30 }); let closed = 0; let release!: () => void;
+  const control = new Promise<void>(resolve => { release = resolve; });
+  const incoming = message('held-read', { type: 'text', text: 'question' });
+  (incoming as unknown as { read(): Promise<void> }).read = () => control;
+  f.probe.app = { stop: async () => { closed++; } };
+  try {
+    await f.probe.onMessage(f.space, incoming); await f.probe.flushPending();
+    expect((await pendingDotBatches())[0]!.messages[0]!.id).toBe('held-read');
+    await expect(f.runtime.stop()).rejects.toThrow('runtime_stop_failed');
+    expect(closed).toBe(1);
+  } finally { release(); await control; await f.runtime.stop().catch(() => {}); }
 });

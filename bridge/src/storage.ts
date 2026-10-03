@@ -426,7 +426,6 @@ export async function enqueueOutbound(
   requestId?: string,
   authorize?: () => Promise<void>,
 ): Promise<OutboundItem[]> {
-  if (input.kind === "typing") throw new Error("outgoing_control_disabled");
   if (input.kind === "attachment_group" && input.batchId) requestId = `cards:${input.batchId}`;
   const normalized = await normalizeEnqueueAttachments(input);
   const items = buildOutboundItems(normalized);
