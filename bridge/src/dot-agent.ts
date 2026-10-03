@@ -4,18 +4,21 @@ import { readFile } from 'node:fs/promises';
 import { pendingDotBatches } from './dot-inbox.ts';
 import { waitForDotBatch } from './dot-wait.ts';
 import { tryClaimBatch, markBatchClaimCompleted, readBatchClaim, withLiveBatchClaim, assertLiveBatchClaim } from './batch-claim.ts';
-import { enqueueOutbound, readUnreadBatch, loadOutboundQueue, validateId } from './storage.ts';
+import { enqueueOutbound, readUnreadBatch, loadOutboundQueue, validateId, validateOutboundInput } from './storage.ts';
 import type { EnqueueOutboundInput } from './types.ts';
 
 type ActionRequest = { actionId: string; input: EnqueueOutboundInput };
 type DirectReplyRequest = { batchId: string; owner: string; actionId: string; text: string };
 
 /** Shared by the action-file and direct-text paths: never skip queue validation. */
-async function enqueueBatchAction(batchId: string, owner: string, request: ActionRequest) {
+async function enqueueBatchAction(batchId: string, owner: string, value: unknown) {
   await assertLiveBatchClaim(batchId, owner);
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['actionId', 'input'].includes(key))) throw new Error('invalid_action_request');
+  const request = value as ActionRequest;
+  validateId(request.actionId);
+  validateOutboundInput(request.input);
   recordLatency("answerReadyAt", batchId);
   const batch = await readUnreadBatch(batchId);
-  validateId(request.actionId);
   if (!batch.messages.some(m => m.spaceId === request.input.spaceId)) throw new Error('original_batch_space_required');
   if (request.input.kind === 'reply' || request.input.kind === 'react' || request.input.kind === 'app_update') {
     const target = request.input.targetMessageId;
@@ -83,7 +86,7 @@ if (action === 'reply' && batchId === undefined) {
 } else if (action === 'enqueue' && batchId && owner && arg) {
   // Check the claim before reading an action file, as the original CLI did.
   await assertLiveBatchClaim(batchId, owner);
-  result = await enqueueBatchAction(batchId, owner, JSON.parse(await readFile(arg, 'utf8')) as ActionRequest);
+  result = await enqueueBatchAction(batchId, owner, JSON.parse(await readFile(arg, 'utf8')));
 } else {
   throw new Error('usage: dot-agent reply < stdin JSON {batchId,owner,actionId,text} | wait <owner> [timeout-ms]|pending|status|claim <batchId> <owner>|complete <batchId> <owner> [note]|enqueue <batchId> <owner> <action.json>');
 }

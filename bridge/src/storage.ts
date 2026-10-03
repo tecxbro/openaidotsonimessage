@@ -73,7 +73,7 @@ export async function ensureDataDir(): Promise<void> {
 }
 
 export function validateId(id: string): void {
-  if (!id || !/^[a-zA-Z0-9_.:-]+$/.test(id) || id.includes("..")) throw new Error("invalid_id");
+  if (typeof id !== "string" || !id || !/^[a-zA-Z0-9_.:-]+$/.test(id) || id.includes("..")) throw new Error("invalid_id");
 }
 
 export function newId(kind: "b" | "o"): string {
@@ -198,6 +198,52 @@ export async function listWebhookPending(): Promise<string[]> {
 }
 
 type QueueFile = { items: OutboundItem[] };
+
+/** TypeScript annotations do not validate JSON. All producers share this gate. */
+export function validateOutboundInput(value: unknown): asserts value is EnqueueOutboundInput {
+  const invalid = (field: string): never => { throw new Error(`invalid_outbound_action: ${field}`); };
+  if (!value || typeof value !== "object" || Array.isArray(value)) invalid("object_required");
+  const row = value as Record<string, unknown>;
+  const fields: Record<string, string[]> = {
+    text: ["text", "attachmentPath", "effect"], reply: ["text", "targetMessageId"],
+    react: ["targetMessageId", "emoji"], poll: ["title", "options"],
+    voice: ["audioPath", "text", "durationSeconds"], typing: ["state"],
+    attachment_group: ["attachmentPaths", "text", "batchId", "cards"],
+    app: ["url", "live"], app_update: ["url", "live", "targetMessageId"],
+  };
+  const kind = row.kind === undefined ? "text" : row.kind;
+  if (typeof kind !== "string" || !Object.hasOwn(fields, kind)) invalid("kind");
+  const allowed = new Set(["kind", "spaceId", ...fields[kind as string]!]);
+  if (Object.keys(row).some(key => !allowed.has(key))) invalid("unknown_field");
+  const string = (key: string, required = false, nonempty = false) => {
+    if (row[key] === undefined && !required) return;
+    if (typeof row[key] !== "string" || (nonempty && !(row[key] as string).trim())) invalid(key);
+  };
+  string("spaceId", true, true);
+  const requiredStrings: Record<string, string[]> = {
+    text: ["text"], reply: ["text", "targetMessageId"], react: ["targetMessageId", "emoji"],
+    poll: ["title"], voice: ["audioPath"], app: ["url"], app_update: ["url", "targetMessageId"],
+  };
+  const nonemptyStrings = new Set(["audioPath", "targetMessageId", "emoji", "attachmentPath", "batchId"]);
+  const stringFields = ["text", "title", "url", "audioPath", "targetMessageId", "emoji", "batchId", "attachmentPath", "effect"];
+  for (const key of stringFields.filter(key => allowed.has(key))) {
+    string(key, requiredStrings[kind as string]?.includes(key) ?? false, nonemptyStrings.has(key));
+  }
+  if (row.live !== undefined && typeof row.live !== "boolean") invalid("live");
+  if (row.durationSeconds !== undefined && (typeof row.durationSeconds !== "number" || !Number.isFinite(row.durationSeconds) || row.durationSeconds < 0)) invalid("durationSeconds");
+  if (kind === "typing" && row.state !== "start" && row.state !== "stop") invalid("state");
+  for (const key of kind === "poll" ? ["options"] : kind === "attachment_group" ? ["attachmentPaths"] : []) {
+    if (!Array.isArray(row[key]) || (row[key] as unknown[]).some(item => typeof item !== "string")) invalid(key);
+  }
+  if (row.batchId !== undefined) validateId(row.batchId as string);
+  if (row.cards !== undefined) {
+    if (!Array.isArray(row.cards)) invalid("cards");
+    const cardFields = new Set(["optionId", "title", "url", "caption", "details", "price"]);
+    for (const card of row.cards as unknown[]) {
+      if (!card || typeof card !== "object" || Array.isArray(card) || Object.entries(card).some(([key, item]) => !cardFields.has(key) || typeof item !== "string")) invalid("cards");
+    }
+  }
+}
 
 export async function loadOutboundQueue(): Promise<OutboundItem[]> {
   return withLock(async () => {
@@ -446,6 +492,7 @@ export async function enqueueOutbound(
   requestId?: string,
   authorize?: () => Promise<void>,
 ): Promise<OutboundItem[]> {
+  validateOutboundInput(input);
   if (input.kind === "attachment_group" && input.batchId) requestId = `cards:${input.batchId}`;
   const normalized = await normalizeEnqueueAttachments(input);
   const items = buildOutboundItems(normalized);
