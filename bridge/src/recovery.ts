@@ -2,7 +2,7 @@ import { readBatchClaim, reconcileConversationOwners } from "./batch-claim.ts";
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DATA_DIR, type InboundRecord, type UnreadBatch } from './types.ts';
-import { addHandledIds, addWebhookPending, removeWebhookPending, loadPendingBatch, savePendingBatch, loadOutboundQueue, updateOutbound } from './storage.ts';
+import { addHandledIds, addWebhookPending, removeWebhookPending, loadPendingBatch, savePendingBatch, loadOutboundQueue, updateOutbound, loadDurableInbound } from './storage.ts';
 import { assertRecoveryTimestamp, type RecoveryPolicy } from './recovery-policy.ts';
 export async function recoverDurableState(policy?: RecoveryPolicy): Promise<InboundRecord[]> {
   await reconcileConversationOwners();
@@ -19,9 +19,7 @@ export async function recoverDurableState(policy?: RecoveryPolicy): Promise<Inbo
   const buffered = await loadPendingBatch();
   if (policy) buffered.forEach(m => assertRecoveryTimestamp(policy, m.timestamp));
   const pending = new Map(buffered.filter(m => !covered.has(m.id)).map(m => [m.id, m]));
-  for (const name of await readdir(join(DATA_DIR, 'inbound')).catch(() => [])) {
-    if (!name.endsWith('.json')) continue;
-    const record: InboundRecord = JSON.parse(await readFile(join(DATA_DIR, 'inbound', name), 'utf8'));
+  for (const record of await loadDurableInbound()) {
     if (policy) assertRecoveryTimestamp(policy, record.timestamp);
     if (!covered.has(record.id)) pending.set(record.id, record);
     handledIds.push(record.id);

@@ -1,7 +1,7 @@
 import { atomicWriteFile } from "./durable-file.ts";
 import { notifyOutboundPublication } from "./runtime-notifications.ts";
 import { recordLatency } from "./latency.ts";
-import { mkdir, open, readFile, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { withFileLock } from "./file-lock.ts";
@@ -104,6 +104,26 @@ export async function appendInbound(record: InboundRecord): Promise<void> {
   await withLock(async () => {
     await appendJsonl(INBOUND_LOG, record);
     await atomicWriteJson(join(DATA_DIR, "inbound", `${encodeURIComponent(record.id)}.json`), record);
+  });
+}
+
+/** Journal is synced before snapshots. Recovery must include that crash window. */
+export async function loadDurableInbound(): Promise<InboundRecord[]> {
+  return withLock(async () => {
+    let journal = "";
+    try { journal = await readFile(INBOUND_LOG, "utf8"); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    const records: InboundRecord[] = journal.split("\n").filter(line => line.trim()).map(line => {
+      try {
+        const row = JSON.parse(line);
+        if (!row || typeof row.id !== "string" || !row.id || [row.spaceId, row.senderId, row.text, row.timestamp, row.receivedAt].some(value => typeof value !== "string")) throw new Error();
+        return row as InboundRecord;
+      } catch { throw new Error("corrupt_inbound_journal"); }
+    });
+    for (const name of await readdir(join(DATA_DIR, "inbound")).catch(() => [])) {
+      if (name.endsWith(".json")) records.push(await readJson<InboundRecord>(join(DATA_DIR, "inbound", name), undefined as never));
+    }
+    return records;
   });
 }
 
