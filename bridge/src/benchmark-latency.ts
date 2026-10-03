@@ -21,7 +21,10 @@ const { latencyKey } = await import('./latency.ts');
 const backlog: Array<[Space, Message]> = [];
 let waiter: ((result: IteratorResult<[Space, Message]>) => void) | undefined;
 let ended = false, connections = 0, sends = 0;
-const space = { id: 'fake-space', type: 'dm', phone: 'fake-line', send: async () => ({ id: `fake-provider-${++sends}` }) } as unknown as Space;
+let reads = 0, typingStarts = 0, typingStops = 0;
+const space = { id: 'fake-space', type: 'dm', phone: 'fake-line', send: async () => ({ id: `fake-provider-${++sends}` }),
+  startTyping: async () => { typingStarts++; }, stopTyping: async () => { typingStops++; },
+} as unknown as Space;
 const messages: AsyncIterable<[Space, Message]> = { [Symbol.asyncIterator]() {
   return { next: async () => {
     const value = backlog.shift();
@@ -49,7 +52,7 @@ try {
   await until(async () => Boolean(waiter));
   for (let i = 0; i < samples + 10; i++) {
     const id = `fake-input-${i}`;
-    const message = { id, platform: 'imessage', direction: 'inbound', sender: { id: 'fake-owner' }, timestamp: new Date(), content: { type: 'text', text: 'benchmark request' } } as unknown as Message;
+    const message = { id, platform: 'imessage', direction: 'inbound', sender: { id: 'fake-owner' }, timestamp: new Date(), content: { type: 'text', text: 'benchmark request' }, read: async () => { reads++; } } as unknown as Message;
     const next = waiter; waiter = undefined;
     if (next) next({ done: false, value: [space, message] }); else backlog.push([space, message]);
     const claim = await waitForDotBatch('instant-agent', { timeoutMs: 5000 });
@@ -69,6 +72,7 @@ try {
     if (i >= 10) recorded.push({ message: latencyKey(id), batch: latencyKey(claim.batch.batchId), outbound: latencyKey(outbound.id) });
   }
   await runtime.stop(); await running;
+  if (reads !== samples + 10 || typingStarts !== samples + 10 || typingStops < samples + 10) throw new Error('benchmark_controls_not_exercised');
   const rows = (await readFile(join(directory, 'latency.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line) as { key: string; stage: string; atMs: number });
   const at = (key: string, stage: string) => {
     const row = rows.find(row => row.key === key && row.stage === stage);
@@ -78,6 +82,7 @@ try {
   const stats = (values: number[]) => ({ samples: values.length, p50Ms: +values[Math.ceil(values.length * .5) - 1]!.toFixed(3), p95Ms: +values[Math.ceil(values.length * .95) - 1]!.toFixed(3), maximumMs: +values.at(-1)!.toFixed(3) });
   const report = {
     fixture: 'local instant agent and provider; no network or device', agentProducer: externalAgent ? 'separate CLI process' : 'same process', measuredAt: new Date().toISOString(), runtime: `Bun ${Bun.version}`, platform: process.platform, warmupSamples: 10, connections, substantiveResponses: sends,
+    controls: { enabled: true, reads, typingStarts, typingStops },
     inputCommitToPublication: stats(intervals('message', 'inboundCommittedAt', 'batchPublishedAt')),
     publicationToClaim: stats(intervals('batch', 'batchPublishedAt', 'claimedAt')),
     claimToAnswerSubmission: stats(intervals('batch', 'claimedAt', 'answerReadyAt')),
