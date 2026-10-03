@@ -27,9 +27,9 @@ export class RuntimeDiagnostics {
   private lastWriteWarningAt = -Infinity;
   constructor(private readonly directory = DATA_DIR, private readonly now = () => Date.now()) {}
 
-  lifecycle(event: LifecycleEvent, trigger?: 'SIGINT' | 'SIGTERM' | 'requested'): void {
+  lifecycle(event: LifecycleEvent, trigger?: 'SIGINT' | 'SIGTERM' | 'requested' | 'ownership_lost'): void {
     if (!EVENTS.includes(event)) return;
-    this.append({ event, ...(['SIGINT', 'SIGTERM', 'requested'].includes(trigger ?? '') ? { trigger } : {}) });
+    this.append({ event, ...(['SIGINT', 'SIGTERM', 'requested', 'ownership_lost'].includes(trigger ?? '') ? { trigger } : {}) });
   }
 
   failure(operation: DiagnosticOperation, error?: unknown): void {

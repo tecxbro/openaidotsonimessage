@@ -1,4 +1,5 @@
 import { latencyNow, recordLatency } from "./latency.ts";
+import type { FileLockLease } from "./file-lock.ts";
 import { OperationTimeout, withDeadline, settleWithin } from "./operation-deadline.ts";
 import { readBatchClaim } from "./batch-claim.ts";
 import { subscribeOutboundPublication, watchPublicationDirectory } from "./runtime-notifications.ts";
@@ -213,12 +214,16 @@ export class GpProofRuntime {
     this.webhookTasks.add(task);
   }
 
-  constructor(config: Config, private readonly connect: typeof Spectrum = Spectrum) {
+  private readonly onOwnershipLost = () => { void this.stop("ownership_lost").catch(() => {}); };
+
+  constructor(config: Config, private readonly connect: typeof Spectrum = Spectrum, private readonly owner?: FileLockLease) {
     this.config = config;
     this.media = new MediaWorker(config.mediaConcurrency ?? 2, this.shutdownSignal.signal);
     for (const ms of [config.operationTimeoutMs, config.shutdownGraceMs, config.mediaTimeoutMs]) {
       if (ms !== undefined && (!Number.isFinite(ms) || ms <= 0)) throw new Error("invalid_operation_bound");
     }
+    owner?.lost.addEventListener("abort", this.onOwnershipLost, { once: true });
+    if (owner?.lost.aborted) this.onOwnershipLost();
   }
 
   async start(): Promise<void> {
@@ -233,6 +238,7 @@ export class GpProofRuntime {
   }
 
   private async startInner(): Promise<void> {
+    this.owner?.assertHeld();
     const policy = await this.recoveryPolicy();
     await ensureDataDir();
     this.pending = await recoverDurableState(policy);
@@ -243,6 +249,8 @@ export class GpProofRuntime {
     this.handled = await loadHandledIds();
     if (this.pending.length > 0) this.scheduleFlush();
 
+    this.owner?.assertHeld();
+    if (this.stopped) return;
     const app = await this.connect({
       projectId: this.config.projectId,
       projectSecret: this.config.projectSecret,
@@ -251,6 +259,7 @@ export class GpProofRuntime {
       options: { logLevel: "error" },
     });
     this.app = app;
+    if (this.stopped) { await app.stop(); return; }
     this.diagnostics.lifecycle("provider_connected");
     log("hosted iMessage provider connected");
     for (const job of mediaJobs ?? await pendingMediaJobs()) {
@@ -298,7 +307,7 @@ export class GpProofRuntime {
     }
   }
 
-  async stop(trigger: "SIGINT" | "SIGTERM" | "requested" = "requested"): Promise<void> {
+  async stop(trigger: "SIGINT" | "SIGTERM" | "requested" | "ownership_lost" = "requested"): Promise<void> {
     if (!this.stopping) {
       this.diagnostics.lifecycle("stop_requested", trigger);
       this.stopping = this.stopInner().then(
@@ -315,6 +324,7 @@ export class GpProofRuntime {
   private async stopInner(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
+    this.owner?.lost.removeEventListener("abort", this.onOwnershipLost);
     this.shutdownSignal.abort();
     process.off("SIGINT", this.onSigint);
     process.off("SIGTERM", this.onSigterm);
@@ -800,6 +810,7 @@ export class GpProofRuntime {
 
   private async sendOutbound(selected: OutboundItem): Promise<void> {
     if (this.stopped) return;
+    try { this.owner?.assertHeld(); } catch { this.onOwnershipLost(); return; }
     const item = await beginOutboundAttempt(selected.id, selected.attempts);
     if (!item) return;
     const attemptId = item.attemptId!;
@@ -833,7 +844,8 @@ export class GpProofRuntime {
     const invoke = async (call: () => Promise<unknown>, allowSkip = false): Promise<unknown> => {
       const work = Promise.resolve().then(async () => {
         if (this.stopped) throw new Error("runtime_stopping");
-            sdkInvoked = true;
+        this.owner?.assertHeld();
+        sdkInvoked = true;
         const startedAt = latencyNow();
         let result: unknown;
         try { const pending = call(); recordLatency("sdkCallStartedAt", item.id, startedAt); result = await pending; }

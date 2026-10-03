@@ -1,6 +1,6 @@
 /** Uses existing user-approved Photon CLI login. Never writes a project secret. */
 import { execFileSync } from 'node:child_process';
-import { acquireFileLock } from './file-lock.ts';
+import { acquireFileLock, type FileLockLease } from './file-lock.ts';
 import { DATA_DIR } from './types.ts';
 import { join } from 'node:path';
 import type { GpProofRuntime } from './runtime.ts';
@@ -8,7 +8,7 @@ import { loadRecoveryPolicy, recoveryPolicyRequired } from './recovery-policy.ts
 
 let stage = 'validate_configuration';
 let runtime: GpProofRuntime | undefined;
-let release: (() => Promise<void>) | undefined;
+let release: FileLockLease | undefined;
 try {
   const projectId = process.env.SPECTRUM_PROJECT_ID?.trim();
   const authorizedSenderId = process.env.AUTHORIZED_SENDER_ID?.trim();
@@ -30,7 +30,8 @@ try {
   let credential = JSON.parse(raw);
   raw = undefined;
   if (credential.id !== projectId || typeof credential.projectSecret !== 'string' || !credential.projectSecret) throw new Error('invalid_credential_response');
-  runtime = new GpProofRuntime({ projectId, projectSecret: credential.projectSecret, authorizedSenderId, hostMode: 'dot-local', greetingFastPath: false, requireRecoveryPolicy });
+  release.assertHeld();
+  runtime = new GpProofRuntime({ projectId, projectSecret: credential.projectSecret, authorizedSenderId, hostMode: 'dot-local', greetingFastPath: false, requireRecoveryPolicy }, undefined, release);
   credential = undefined;
   stage = 'consume_provider_stream';
   await runtime.start();

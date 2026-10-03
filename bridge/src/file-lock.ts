@@ -4,7 +4,14 @@ import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
-export async function acquireFileLock(path: string, waitMs = 30_000): Promise<() => Promise<void>> {
+/** Callable release keeps existing users compatible. Loss revokes authority. */
+export type FileLockLease = (() => Promise<void>) & {
+  readonly lost: AbortSignal;
+  readonly helperPid: number;
+  assertHeld(): void;
+};
+
+export async function acquireFileLock(path: string, waitMs = 30_000): Promise<FileLockLease> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   // This inode is permanent. Never rename/delete a flock file to recover it.
   const file = await open(`${path}.lock`, 'a', 0o600);
@@ -18,6 +25,9 @@ export async function acquireFileLock(path: string, waitMs = 30_000): Promise<()
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const exited = new Promise<void>((resolve) => { child.once('close', () => resolve()); });
+  const loss = new AbortController();
+  let released = false;
+  child.once('exit', () => { if (!released) loss.abort(); });
   child.stdin.on('error', () => {});
   child.stderr.resume();
   try {
@@ -31,24 +41,30 @@ export async function acquireFileLock(path: string, waitMs = 30_000): Promise<()
       });
     });
     await mkdir(path, { recursive: true, mode: 0o700 });
-    await writeFile(join(path, 'owner.json'), JSON.stringify({ pid: process.pid, token: randomUUID(), backend: 'flock' }), { mode: 0o600 });
+    if (loss.signal.aborted) throw new Error('file_lock_lost');
+    await writeFile(join(path, 'owner.json'), JSON.stringify({ pid: process.pid, helperPid: child.pid, token: randomUUID(), backend: 'flock' }), { mode: 0o600 });
+    if (loss.signal.aborted) throw new Error('file_lock_lost');
   } catch (error) {
     child.stdin.end();
     await exited;
     throw error;
   }
-  let released = false;
-  return async () => {
+  const release = async () => {
     if (released) return;
     released = true;
+    // An old owner must never remove a replacement owner's metadata.
+    if (loss.signal.aborted) { child.stdin.end(); await exited; return; }
     // Metadata is removed while the kernel lock is still held.
     await rm(path, { recursive: true, force: true });
     child.stdin.end();
     await exited;
   };
+  return Object.assign(release, { lost: loss.signal, helperPid: child.pid!, assertHeld: () => {
+    if (released || loss.signal.aborted || child.exitCode !== null || child.signalCode !== null) throw new Error('file_lock_lost');
+  } });
 }
 
-export async function withFileLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+export async function withFileLock<T>(path: string, fn: (lease: FileLockLease) => Promise<T>): Promise<T> {
   const release = await acquireFileLock(path);
-  try { return await fn(); } finally { await release(); }
+  try { release.assertHeld(); const result = await fn(release); release.assertHeld(); return result; } finally { await release(); }
 }
