@@ -154,9 +154,9 @@ describe("provider-event cutoff at bridge ingress", () => {
       await f.probe.onMessage(f.space, f.message("fresh-media", new Date(NEW_TIME), f.media));
       await f.probe.flushPending();
       const batches = await pendingDotBatches();
-      expect(batches).toHaveLength(1);
-      expect(batches[0]!.messages.map(m => m.id)).toEqual(["fresh-text", "fresh-media"]);
-      expect(batches[0]!.messages.map(m => m.timestamp)).toEqual([NEW_TIME, NEW_TIME]);
+      const records = batches.flatMap(batch => batch.messages);
+      expect(records.map(m => m.id)).toEqual(["fresh-text", "fresh-media"]);
+      expect(records.map(m => m.timestamp)).toEqual([NEW_TIME, NEW_TIME]);
       expect(f.counts().reads).toBe(2);
       expect(f.counts().downloads).toBe(1);
       const job = JSON.parse(await readFile(join(DATA_DIR, "media-jobs", "fresh-media.json"), "utf8"));

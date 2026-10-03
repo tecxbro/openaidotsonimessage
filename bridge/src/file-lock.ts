@@ -9,7 +9,8 @@ export async function acquireFileLock(path: string, waitMs = 30_000): Promise<()
   // This inode is permanent. Never rename/delete a flock file to recover it.
   const file = await open(`${path}.lock`, 'a', 0o600);
   await file.close();
-  const child = spawn('flock', ['-x', '-E', '75', '-w', String(Math.max(0, waitMs) / 1000), `${path}.lock`, 'sh', '-c', 'printf "locked\\n"; cat >/dev/null'], {
+  const wait = waitMs <= 0 ? ['-n'] : ['-w', String(waitMs / 1000)];
+  const child = spawn('flock', ['-x', '-E', '75', ...wait, `${path}.lock`, 'sh', '-c', 'printf "locked\\n"; cat >/dev/null'], {
     // Terminal signals must reach the owner, not release its kernel lock while
     // the owner's async shutdown is still running. Keep the stdin pipe owned by
     // the parent: explicit release or parent death/EOF still ends the helper.

@@ -8,10 +8,11 @@ import { pendingDotBatches, queueDotWake } from './dot-inbox.ts';
 import { tryClaimBatch, markBatchClaimCompleted, withLiveBatchClaim, assertLiveBatchClaim } from './batch-claim.ts';
 import { recoverDurableState } from './recovery.ts';
 import { GpProofRuntime } from './runtime.ts';
+import { markSetupConfettiSent, SETUP_CONFETTI_MARKER_PATH } from './setup-confetti.ts';
 import { pendingMediaJobs } from './media-jobs.ts';
 import type { Message, Space, Spectrum } from '@spectrum-ts/core';
 
-beforeEach(async () => { await rm(DATA_DIR, { recursive: true, force: true }); await mkdir(DATA_DIR, { recursive: true }); });
+beforeEach(async () => { await rm(DATA_DIR, { recursive: true, force: true }); await mkdir(DATA_DIR, { recursive: true }); await markSetupConfettiSent(); });
 const record = (id: string): InboundRecord => ({ id, spaceId: 'space', senderId: 'owner', text: 'question', timestamp: new Date().toISOString(), receivedAt: new Date().toISOString() });
 const config = { projectId: 'test-only', projectSecret: 'test-only', authorizedSenderId: 'owner', hostMode: 'dot-local' as const, greetingFastPath: false };
 type Probe = { onMessage(s: Space, m: Message, timing?: { streamReceivedAt?: string }): Promise<void>; flushPending(): Promise<void>; sendOutbound(item: OutboundItem): Promise<void> };
@@ -115,6 +116,7 @@ describe('existing runtime through dot host', () => {
   });
   test('marks read, preserves question, queues once-only confetti and durable wake', async () => {
     const f = fixture();
+    await rm(SETUP_CONFETTI_MARKER_PATH, { force: true });
     try {
       await f.probe.onMessage(f.space, f.message('first')); await f.probe.flushPending();
       expect(f.readCount()).toBe(1);
@@ -153,7 +155,7 @@ describe('existing runtime through dot host', () => {
       await f.probe.onMessage(f.space, f.message('timed-media', content), { streamReceivedAt: original });
       await f.probe.onMessage(f.space, f.message('old-media', content), { streamReceivedAt: undefined });
       await f.probe.flushPending();
-      const records = (await pendingDotBatches())[0]!.messages;
+      const records = (await pendingDotBatches()).flatMap(batch => batch.messages);
       expect(records.find(r => r.id === 'timed-media')!.streamReceivedAt).toBe(original);
       expect(records.find(r => r.id === 'old-media')!.streamReceivedAt).toBeUndefined();
       const job = JSON.parse(await readFile(join(DATA_DIR, 'media-jobs', 'timed-media.json'), 'utf8'));

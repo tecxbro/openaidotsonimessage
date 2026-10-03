@@ -115,7 +115,7 @@ test('a failed outbound pass is single-flight and recovery sends only the origin
       f.probe.runMaintenance('outbound_drain', () => f.probe.drainOutbound()),
       f.probe.runMaintenance('outbound_drain', () => f.probe.drainOutbound()),
     ]);
-    expect(maximumActive).toBe(1); expect(calls).toBe(2); expect(f.sends()).toBe(1);
+    expect(maximumActive).toBe(1); expect(calls).toBe(3); expect(f.sends()).toBe(1);
     const items = await loadOutboundQueue();
     expect(items.find(i => i.id === alreadySent!.id)!.messageId).toBe('old-provider-id');
     expect(items.find(i => i.id === unknown!.id)!.status).toBe('unknown');
@@ -200,6 +200,8 @@ test('failed final flush still waits for active send and closes the provider wit
   await until(async () => Boolean(finish));
   await Promise.all(probe.maintenance.values());
   probe.spaces.set('space', space);
+  // Hold publication to exercise failure specifically during the final flush.
+  probe.scheduleFlush = () => {};
   await probe.onMessage(space, { id: 'pending-question', content: { type: 'text', text: 'PRIVATE_PAYLOAD_SENTINEL' }, platform: 'imessage', direction: 'inbound', sender: { id: 'owner' }, timestamp: new Date(), read: async () => {} } as unknown as Message);
   await enqueueOutbound({ spaceId: 'space', text: 'first' });
   const [later] = await enqueueOutbound({ spaceId: 'space', text: 'later' });

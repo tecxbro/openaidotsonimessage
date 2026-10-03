@@ -1,3 +1,5 @@
+import { watchPublicationDirectory } from "./runtime-notifications.ts";
+import { DATA_DIR } from "./types.ts";
 import { RuntimeDiagnostics, type DiagnosticOperation } from "./runtime-diagnostics.ts";
 import { pendingMediaJobs, saveMediaJob, type MediaJob } from "./media-jobs.ts";
 import { queueDotWake } from "./dot-inbox.ts";
@@ -9,7 +11,6 @@ import { effect, imessage } from "@spectrum-ts/imessage";
 import type { AttachmentGroupPart, Config, InboundRecord, OutboundItem } from "./types.ts";
 import { sendReplyWithFallback } from "./reply-fallback.ts";
 import {
-  DEBOUNCE_MS,
   TYPING_HEARTBEAT_MS,
   TYPING_TIMEOUT_MS,
 } from "./types.ts";
@@ -62,7 +63,6 @@ import {
   resolveReactionOption,
 } from "./reaction-option.ts";
 import {
-  GREETING_DEBOUNCE_MS,
   batchCasualKind,
   isGreetingOnlyBatch,
   pickCannedReply,
@@ -133,7 +133,11 @@ export class GpProofRuntime {
   private readonly spaces = new Map<string, Space>();
   private handled = new Set<string>();
   private pending: InboundRecord[] = [];
-  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private flushScheduled = false;
+  private notificationClosers: Array<() => void> = [];
+  private outboundAgain = false;
+  private maintenanceAgain = new Set<MaintenanceOperation>();
+  private webhookTasks = new Set<Promise<void>>();
   private outboundTimer: ReturnType<typeof setInterval> | null = null;
   private webhookTimer: ReturnType<typeof setInterval> | null = null;
   private cardsReadyTimer: ReturnType<typeof setInterval> | null = null;
@@ -180,9 +184,27 @@ export class GpProofRuntime {
     const active = this.maintenance.get(operation);
     if (active) return active;
     const task = this.observeBackground(operation, work)
-      .finally(() => this.maintenance.delete(operation));
+      .finally(() => {
+        this.maintenance.delete(operation);
+        if (this.maintenanceAgain.delete(operation) && !this.stopped) void this.runMaintenance(operation, work);
+      });
     this.maintenance.set(operation, task);
     return task;
+  }
+
+  private requestMaintenance(operation: MaintenanceOperation, work: () => Promise<void>): void {
+    if (this.stopped) return;
+    if (this.maintenance.has(operation)) this.maintenanceAgain.add(operation);
+    else void this.runMaintenance(operation, work);
+  }
+
+  private notifyWebhook(batchId: string): void {
+    // A new turn of the event loop releases the serialized local commit first.
+    const task = this.observeBackground("webhook_delivery", async () => {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      await this.postWebhook(batchId);
+    }).finally(() => this.webhookTasks.delete(task));
+    this.webhookTasks.add(task);
   }
 
   constructor(config: Config, private readonly connect: typeof Spectrum = Spectrum) {
@@ -228,6 +250,10 @@ export class GpProofRuntime {
       this.inboundTasks.set(job.messageId, task);
     }
 
+    // Directory watches survive atomic replacement of the queue/marker inode.
+    this.notificationClosers.push(await watchPublicationDirectory(DATA_DIR,
+      name => name === "outbound-queue.json",
+      () => this.requestMaintenance("outbound_drain", () => this.drainOutbound())));
     this.outboundTimer = setInterval(() => {
       void this.runMaintenance("outbound_drain", () => this.drainOutbound());
     }, 500);
@@ -277,7 +303,7 @@ export class GpProofRuntime {
     this.stopped = true;
     process.off("SIGINT", this.onSigint);
     process.off("SIGTERM", this.onSigterm);
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    for (const close of this.notificationClosers.splice(0)) close();
     if (this.outboundTimer) clearInterval(this.outboundTimer);
     if (this.webhookTimer) clearInterval(this.webhookTimer);
     if (this.cardsReadyTimer) clearInterval(this.cardsReadyTimer);
@@ -292,6 +318,7 @@ export class GpProofRuntime {
     // A failed final flush must not leave an open provider behind disabled
     // timers/signal handlers. Still hold ownership until the active drain settles.
     await Promise.allSettled([this.outboundDrain, ...this.maintenance.values()]);
+    await Promise.allSettled(this.webhookTasks);
     await Promise.allSettled(this.typingCleanupTasks);
     await Promise.allSettled(this.typingStops.values());
     try { await this.app?.stop(); }
@@ -532,14 +559,12 @@ export class GpProofRuntime {
   }
 
   private scheduleFlush(): void {
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    const delay = isGreetingOnlyBatch(this.pending)
-      ? GREETING_DEBOUNCE_MS
-      : DEBOUNCE_MS;
-    this.debounceTimer = setTimeout(() => {
-      this.debounceTimer = null;
-      void this.observeBackground("batch_flush", () => this.commit(() => this.flushPending()));
-    }, delay);
+    if (this.flushScheduled || this.stopped) return;
+    this.flushScheduled = true;
+    queueMicrotask(() => {
+      this.flushScheduled = false;
+      if (!this.stopped) void this.observeBackground("batch_flush", () => this.commit(() => this.flushPending()));
+    });
   }
 
   private async flushPending(): Promise<void> {
@@ -557,6 +582,8 @@ export class GpProofRuntime {
         messages,
         ...(greetingOnly ? { handledBy: "runtime-greeting" as const } : {}),
       });
+      // Publish the durable wake intent before clearing recoverable input.
+      if (!greetingOnly) await addWebhookPending(batchId);
       this.pending = [];
       await savePendingBatch([]);
       log(`flushed unread batchId=${batchId} count=${messages.length}`);
@@ -572,15 +599,14 @@ export class GpProofRuntime {
         return;
       }
 
-      await addWebhookPending(batchId);
-
       // Best-effort typing while Grok thinks.
       const spaceIds = [...new Set(messages.map((m) => m.spaceId))];
       if (!this.stopped) for (const spaceId of spaceIds) {
         void this.observeBackground("typing_control", () => this.startTypingBestEffort(spaceId));
       }
 
-      await this.postWebhook(batchId);
+      if (this.config.hostMode === "dot-local") await this.postWebhook(batchId);
+      else this.notifyWebhook(batchId);
     } finally {
       this.flushing = false;
     }
@@ -755,8 +781,14 @@ export class GpProofRuntime {
 
   private drainOutbound(): Promise<void> {
     if (this.stopped) return Promise.resolve();
+    this.outboundAgain = true;
     if (this.outboundDrain) return this.outboundDrain;
-    const run = this.drainOutboundInner();
+    const run = (async () => {
+      while (this.outboundAgain && !this.stopped) {
+        this.outboundAgain = false;
+        await this.drainOutboundInner();
+      }
+    })();
     this.outboundDrain = run.finally(() => { this.outboundDrain = undefined; });
     return this.outboundDrain;
   }
@@ -769,6 +801,7 @@ export class GpProofRuntime {
       if (item.status !== "queued") continue;
       if (this.sending.has(item.id)) continue;
       if (item.nextAttemptAt && Date.parse(item.nextAttemptAt) > now) continue;
+      this.outboundAgain = true; // Reconcile durable state after the pass, even if a watch event was missed.
       this.sending.add(item.id);
       try {
         await this.sendOutbound(item);

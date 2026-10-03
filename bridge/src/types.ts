@@ -2,7 +2,6 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 export const PREFIX = process.env.DEPLOY_ID_PREFIX || "dot";
-export const DEBOUNCE_MS = 2000;
 /** Best-effort typing indicator timeout after unread flush. */
 /** Keep showing typing until first text/reply, refreshing periodically. */
 export const TYPING_TIMEOUT_MS = 120_000;
