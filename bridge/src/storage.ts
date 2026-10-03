@@ -240,7 +240,7 @@ export function validateOutboundInput(value: unknown): asserts value is EnqueueO
     if (!Array.isArray(row.cards)) invalid("cards");
     const cardFields = new Set(["optionId", "title", "url", "caption", "details", "price"]);
     for (const card of row.cards as unknown[]) {
-      if (!card || typeof card !== "object" || Array.isArray(card) || Object.entries(card).some(([key, item]) => !cardFields.has(key) || typeof item !== "string")) invalid("cards");
+      if (!card || typeof card !== "object" || Array.isArray(card) || Object.entries(card).some(([key, item]) => !cardFields.has(key) || (item !== undefined && typeof item !== "string"))) invalid("cards");
     }
   }
 }

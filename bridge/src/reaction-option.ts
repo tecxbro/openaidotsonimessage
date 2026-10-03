@@ -5,9 +5,9 @@
  * Persist at attachment_group send; resolve on inbound reaction without visual reanalysis.
  */
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { atomicWriteFile } from "./durable-file.ts";
 import { DATA_DIR } from "./types.ts";
 import type {
   AttachmentGroupPart,
@@ -59,13 +59,18 @@ type PresentationIndexFile = {
 };
 
 async function atomicWriteJson(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  await rename(tmp, path);
+  await atomicWriteFile(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+export async function hasAttachmentGroupMapping(item: Extract<OutboundItem, { kind: "attachment_group" }>): Promise<boolean> {
+  if (!item.messageId || !item.parts?.length) return false;
+  const batchId = item.batchId ?? inferBatchIdFromPaths(item.attachmentPaths) ?? `outbound-${item.id}`;
+  const record = await loadPresentationByBatchId(batchId);
+  if (!record || record.messageId !== item.messageId) return false;
+  try {
+    const index = JSON.parse(await readFile(PRESENTATION_INDEX_PATH, "utf8")) as PresentationIndexFile;
+    return index.byMessageId?.[item.messageId]?.batchId === batchId;
+  } catch { return false; }
 }
 
 export function presentationPath(batchId: string): string {

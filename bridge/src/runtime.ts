@@ -56,6 +56,7 @@ import { CARDS_READY_DIR, drainCardsReady } from "./cards-ready.ts";
 import {
   applyResolvedOptionToInbound,
   persistAttachmentGroupMapping,
+  hasAttachmentGroupMapping,
   resolveReactionOption,
 } from "./reaction-option.ts";
 import {
@@ -99,10 +100,7 @@ function extractAppCardSession(message: unknown): AppCardSession | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const { chatGuid, messageGuid, sessionId, targetMessageGuid } = raw as AppCardSession;
   if (
-    typeof chatGuid !== "string" ||
-    typeof messageGuid !== "string" ||
-    typeof sessionId !== "string" ||
-    typeof targetMessageGuid !== "string"
+    [chatGuid, messageGuid, sessionId, targetMessageGuid].some(value => typeof value !== "string" || !value.trim())
   ) {
     return undefined;
   }
@@ -784,6 +782,7 @@ export class GpProofRuntime {
     for (const item of items) {
       if (this.stopped) break;
       if (item.status === "unknown" || item.status === "sending") { blocked.set(item.spaceId, item.id); continue; }
+      if (item.status === "sent") { await this.repairOutboundMetadata(item); continue; }
       if (item.status !== "queued") continue;
       const blocker = blocked.get(item.spaceId);
       if (blocker) {
@@ -834,7 +833,7 @@ export class GpProofRuntime {
     const invoke = async (call: () => Promise<unknown>, allowSkip = false): Promise<unknown> => {
       const work = Promise.resolve().then(async () => {
         if (this.stopped) throw new Error("runtime_stopping");
-        sdkInvoked = true;
+            sdkInvoked = true;
         const startedAt = latencyNow();
         let result: unknown;
         try { const pending = call(); recordLatency("sdkCallStartedAt", item.id, startedAt); result = await pending; }
@@ -925,16 +924,33 @@ export class GpProofRuntime {
 
   /** Derived metadata is repairable from accepted evidence, never by resending. */
   private async repairOutboundMetadata(item: OutboundItem): Promise<void> {
-    if (item.status !== "sent" || !item.metadataPending) return;
+    if (item.status !== "sent" || !["poll", "app", "app_update", "attachment_group"].includes(outboundKind(item))) return;
     try {
-      if (item.kind === "poll" && item.messageId) await savePollMeta(item.messageId, item.title, item.options);
+      if (item.kind === "poll") {
+        if (!item.messageId) return;
+        const stored = await loadPollMeta(item.messageId);
+        if (stored && !item.metadataPending) return;
+        await savePollMeta(item.messageId, item.title, item.options);
+      }
       if (item.kind === "app" || item.kind === "app_update") {
         const id = item.kind === "app_update" ? item.targetMessageId : item.messageId;
-        if (!id || !item.appSession) return;
-        await saveAppCardSession(id, item.appSession, { live: item.live, url: item.url });
+        if (!id) return;
+        const stored = await loadAppCardSession(id);
+        if (stored && !item.metadataPending) return;
+        let session = item.appSession ?? stored;
+        if (!session && !this.stopped) {
+          // Lookup is safe; it cannot resend the accepted app. Track the
+          // underlying request through shutdown even if observation times out.
+          const lookup = this.trackControl((async () => (await this.resolveSpace(item.spaceId)).getMessage(id))());
+          session = extractAppCardSession(await withDeadline(lookup, this.config.operationTimeoutMs ?? 30_000));
+        }
+        if (!session) { if (!item.metadataPending) await updateOutbound(item.id, { metadataPending: true }, item.attemptId); return; }
+        await updateOutbound(item.id, { appSession: session }, item.attemptId);
+        await saveAppCardSession(id, session, { live: item.live, url: item.url });
       }
       let mapping: Partial<OutboundItem> = {};
       if (item.kind === "attachment_group" && item.messageId) {
+        if (!item.metadataPending && await hasAttachmentGroupMapping(item)) return;
         const mapped = await persistAttachmentGroupMapping({ outboundId: item.id, spaceId: item.spaceId, parentMessageId: item.messageId, paths: item.attachmentPaths, batchId: item.batchId, cards: item.cards });
         mapping = { parts: mapped.parts, batchId: mapped.batchId };
       }
