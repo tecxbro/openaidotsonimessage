@@ -1,3 +1,8 @@
+/** Pinned provider maps auth rejection and invalid arguments to these classes.
+ * Connection/deadline/internal errors remain ambiguous after invocation. */
+export function isDefinitiveSendRejection(error: unknown): boolean {
+  return error instanceof Error && ["AuthenticationError", "ValidationError", "ZodError"].includes(error.name);
+}
 export type ReplyTargetLike = { reply(text: string): Promise<unknown | undefined> };
 export type ReplySpaceLike = {
   getMessage(messageId: string): Promise<ReplyTargetLike | undefined>;
@@ -14,11 +19,12 @@ const messageId = (value: unknown): string | undefined => {
  * A thrown send can have reached the provider: never duplicate it automatically. */
 export async function sendReplyWithFallback(space: ReplySpaceLike, targetMessageId: string, text: string): Promise<ReplyDeliveryResult> {
   let target: ReplyTargetLike | undefined;
-  try { target = await space.getMessage(targetMessageId); } catch { /* lookup cannot send */ }
+  target = await space.getMessage(targetMessageId); // A failed lookup is retryable before invocation.
   let replyError = 'target message unavailable';
   if (target) {
     let sent: unknown;
-    try { sent = await target.reply(text); } catch {
+    try { sent = await target.reply(text); } catch (error) {
+      if (isDefinitiveSendRejection(error)) throw error;
       return { status: 'unknown', reason: 'reply send outcome unknown' };
     }
     if (sent !== undefined) return { status: 'sent', mode: 'reply', messageId: messageId(sent), providerReturnedAt: new Date().toISOString() };
@@ -28,7 +34,8 @@ export async function sendReplyWithFallback(space: ReplySpaceLike, targetMessage
     const sent = await space.send(text);
     if (sent !== undefined) return { status: 'sent', mode: 'fallback', replyError, messageId: messageId(sent), providerReturnedAt: new Date().toISOString() };
     return { status: 'failed', reason: `${replyError}; fallback space.send returned undefined` };
-  } catch {
+  } catch (error) {
+    if (isDefinitiveSendRejection(error)) throw error;
     return { status: 'unknown', reason: `${replyError}; fallback space.send failed with unknown outcome` };
   }
 }

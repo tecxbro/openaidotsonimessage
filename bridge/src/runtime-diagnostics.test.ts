@@ -89,7 +89,7 @@ test('diagnostic storage failure is contained and its stderr fallback is rate li
 test('a failed outbound pass is single-flight and recovery sends only the original queued action once', async () => {
   const f = fixture();
   const [alreadySent] = await enqueueOutbound({ spaceId: 'space', text: 'previous answer' });
-  const [unknown] = await enqueueOutbound({ spaceId: 'space', text: 'uncertain answer' });
+  const [unknown] = await enqueueOutbound({ spaceId: 'another-space', text: 'uncertain answer' });
   const [queued] = await enqueueOutbound({ spaceId: 'space', text: 'PRIVATE_PAYLOAD_SENTINEL' });
   await updateOutbound(alreadySent!.id, { status: 'sent', deliveryState: 'provider_accepted', messageId: 'old-provider-id' });
   await updateOutbound(unknown!.id, { status: 'unknown', deliveryState: 'unknown' });

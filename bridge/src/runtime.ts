@@ -1,8 +1,9 @@
+import { OperationTimeout, withDeadline, settleWithin } from "./operation-deadline.ts";
 import { readBatchClaim } from "./batch-claim.ts";
 import { watchPublicationDirectory } from "./runtime-notifications.ts";
 import { DATA_DIR } from "./types.ts";
 import { RuntimeDiagnostics, type DiagnosticOperation } from "./runtime-diagnostics.ts";
-import { pendingMediaJobs, saveMediaJob, type MediaJob } from "./media-jobs.ts";
+import { MediaJobLimiter, pendingMediaJobs, saveMediaJob, type MediaJob } from "./media-jobs.ts";
 import { queueDotWake } from "./dot-inbox.ts";
 import { recoverDurableState } from "./recovery.ts";
 import { assertRecoveryTimestamp, isAfterRecoveryCutover, loadRecoveryPolicy, type RecoveryPolicy } from "./recovery-policy.ts";
@@ -10,7 +11,7 @@ import { hasSetupConfettiBeenSent, markSetupConfettiSent } from "./setup-confett
 import { Spectrum, app, attachment, edit, group, poll, voice, type Message, type Space } from "@spectrum-ts/core";
 import { effect, imessage } from "@spectrum-ts/imessage";
 import type { AttachmentGroupPart, Config, InboundRecord, OutboundItem } from "./types.ts";
-import { sendReplyWithFallback } from "./reply-fallback.ts";
+import { isDefinitiveSendRejection, sendReplyWithFallback } from "./reply-fallback.ts";
 import {
   TYPING_HEARTBEAT_MS,
   TYPING_TIMEOUT_MS,
@@ -154,6 +155,10 @@ export class GpProofRuntime {
   private webhookActive = new Set<string>();
   private typingStops = new Map<string, Promise<TypingStopTiming>>();
   private typingCleanupTasks = new Set<Promise<void>>();
+  private readonly shutdownSignal = new AbortController();
+  private readonly mediaLimiter: MediaJobLimiter;
+  private mediaWork = new Set<Promise<unknown>>();
+  private providerTasks = new Set<Promise<unknown>>();
   private recoveryPolicyLoad?: Promise<RecoveryPolicy | undefined>;
   private recoveryPolicy(): Promise<RecoveryPolicy | undefined> {
     return this.recoveryPolicyLoad ??= loadRecoveryPolicy(this.config.requireRecoveryPolicy);
@@ -210,6 +215,10 @@ export class GpProofRuntime {
 
   constructor(config: Config, private readonly connect: typeof Spectrum = Spectrum) {
     this.config = config;
+    this.mediaLimiter = new MediaJobLimiter(config.mediaConcurrency ?? 2);
+    for (const ms of [config.operationTimeoutMs, config.shutdownGraceMs, config.mediaTimeoutMs]) {
+      if (ms !== undefined && (!Number.isFinite(ms) || ms <= 0)) throw new Error("invalid_operation_bound");
+    }
   }
 
   async start(): Promise<void> {
@@ -305,6 +314,7 @@ export class GpProofRuntime {
   private async stopInner(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
+    this.shutdownSignal.abort();
     process.off("SIGINT", this.onSigint);
     process.off("SIGTERM", this.onSigterm);
     for (const close of this.notificationClosers.splice(0)) close();
@@ -314,21 +324,27 @@ export class GpProofRuntime {
     for (const spaceId of [...this.typingTimers.keys()]) {
       void this.observeBackground("typing_control", () => this.stopTypingBestEffort(spaceId));
     }
-    await Promise.allSettled(this.inboundTasks.values());
+    const grace = this.config.shutdownGraceMs ?? 6_000;
+    const deadline = performance.now() + grace;
+    const remaining = () => Math.max(0, deadline - performance.now());
     let stopFailed = false;
     let stopError: unknown;
-    try { await this.commit(() => this.flushPending()); }
-    catch (error) { stopFailed = true; stopError = error; }
-    // A failed final flush must not leave an open provider behind disabled
-    // timers/signal handlers. Still hold ownership until the active drain settles.
-    await Promise.allSettled([this.outboundDrain, ...this.maintenance.values()]);
-    await Promise.allSettled(this.webhookTasks);
-    await Promise.allSettled(this.typingCleanupTasks);
-    await Promise.allSettled(this.typingStops.values());
-    try { await this.app?.stop(); }
+    const inboundSettled = await settleWithin(this.inboundTasks.values(), remaining());
+    if (inboundSettled) {
+      try { await withDeadline(this.commit(() => this.flushPending()), remaining()); }
+      catch (error) { stopFailed = true; stopError = error; }
+    }
+    const work = () => [this.outboundDrain, ...this.maintenance.values(), ...this.webhookTasks,
+      ...this.typingCleanupTasks, ...this.typingStops.values(), ...this.providerTasks, ...this.mediaWork];
+    const settled = inboundSettled && await settleWithin(work(), remaining());
+    // Pinned Spectrum stop tears down its provider clients. A deadline alone
+    // cannot transfer ownership while an old SDK invocation can still act.
+    try { await withDeadline(this.app?.stop() ?? Promise.resolve(), Math.min(5_000, this.config.operationTimeoutMs ?? 5_000)); }
     catch (error) { if (!stopFailed) stopError = error; stopFailed = true; }
-    // Teardown was attempted, but do not report a successful stop if persistence
-    // or provider shutdown failed. The caller retains the failed outcome.
+    if (!settled && !await settleWithin([...this.inboundTasks.values(), ...work()], Math.min(1_000, grace))) {
+      stopFailed = true;
+      stopError = new Error("shutdown_requires_owner_exit");
+    }
     if (stopFailed) throw stopError;
     log("stopped");
 
@@ -401,14 +417,15 @@ export class GpProofRuntime {
     const mediaJob: MediaJob | undefined = (shaped.kind === "attachment" || shaped.kind === "voice") ? {
       messageId: message.id, spaceId: space.id, senderId,
       lineId: (space as Space & { phone?: string }).phone,
-      state: "pending", createdAt: new Date().toISOString(), streamReceivedAt: timing.streamReceivedAt,
+      kind: shaped.kind as "attachment" | "voice", state: "pending", createdAt: new Date().toISOString(), streamReceivedAt: timing.streamReceivedAt,
       ...(policy ? { recoveryEventTimestamp: eventTimestamp.toISOString() } : {}),
     } : undefined;
+    if (mediaJob) await this.commit(() => saveMediaJob(mediaJob));
     await saveConversationContext(space.id, { senderId, lineId: (space as Space & { phone?: string }).phone });
     const contextSavedAt = new Date().toISOString();
     this.spaces.set(space.id, space);
     if (mediaJob) {
-      await saveMediaJob(mediaJob);
+
       void this.observeBackground("read_control", () => this.markReadBestEffort(message));
     }
 
@@ -422,6 +439,7 @@ export class GpProofRuntime {
         }
       | undefined;
     if (shaped.kind === "attachment" || shaped.kind === "voice") {
+      const work = this.mediaLimiter.run(async () => {
       const content = unwrapInboundContent(message.content as ContentLike) as ReadableAttachmentContent;
       try {
         const saved = await persistInboundAttachment(message.id, content, {
@@ -482,6 +500,14 @@ export class GpProofRuntime {
       } catch (err) {
         log(`inbound attachment unavailable id=${message.id}`);
         shaped.text = `${shaped.text} [download failed: attachment_unavailable]`;
+      }
+      }, this.shutdownSignal.signal);
+      this.mediaWork.add(work);
+      work.then(() => this.mediaWork.delete(work), () => this.mediaWork.delete(work));
+      try { await withDeadline(work, this.config.mediaTimeoutMs ?? 180_000); }
+      catch (error) {
+        if (error instanceof OperationTimeout && mediaJob) await saveMediaJob({ ...mediaJob, lastError: "media_operation_timeout" });
+        throw error; // Keep the pending identity for recovery; no fabricated completed input.
       }
     }
 
@@ -580,10 +606,12 @@ export class GpProofRuntime {
       const batchId = newId("b");
       const greetingOnly = this.config.greetingFastPath === true && isGreetingOnlyBatch(messages);
 
+      const pendingMedia = (await pendingMediaJobs()).filter(job => messages.some(message => message.spaceId === job.spaceId)).map(({ messageId, spaceId, kind, streamReceivedAt, lastError }) => ({ messageId, spaceId, kind, streamReceivedAt, lastError }));
       await writeUnreadBatch({
         batchId,
         flushedAt: new Date().toISOString(),
         messages,
+        ...(pendingMedia.length ? { pendingMedia } : {}),
         ...(greetingOnly ? { handledBy: "runtime-greeting" as const } : {}),
       });
       // Publish the durable wake intent before clearing recoverable input.
@@ -801,15 +829,24 @@ export class GpProofRuntime {
   private async drainOutboundInner(): Promise<void> {
     const items = await loadOutboundQueue();
     const now = Date.now();
+    const blocked = new Map<string, string>();
     for (const item of items) {
       if (this.stopped) break;
+      if (item.status === "unknown" || item.status === "sending") { blocked.set(item.spaceId, item.id); continue; }
       if (item.status !== "queued") continue;
+      const blocker = blocked.get(item.spaceId);
+      if (blocker) {
+        if (item.blockedBy !== blocker) await updateOutbound(item.id, { blockedBy: blocker });
+        continue;
+      }
       if (this.sending.has(item.id)) continue;
-      if (item.nextAttemptAt && Date.parse(item.nextAttemptAt) > now) continue;
+      if (item.nextAttemptAt && Date.parse(item.nextAttemptAt) > now) { blocked.set(item.spaceId, item.id); continue; }
       this.outboundAgain = true; // Reconcile durable state after the pass, even if a watch event was missed.
       this.sending.add(item.id);
       try {
         await this.sendOutbound(item);
+        const current = (await loadOutboundQueue()).find(row => row.id === item.id);
+        if (current?.status === "unknown" || current?.status === "queued" || current?.status === "sending") blocked.set(item.spaceId, item.id);
       } finally {
         this.sending.delete(item.id);
       }
@@ -820,6 +857,18 @@ export class GpProofRuntime {
     const nextAttempts = item.attempts + 1;
     const kind = outboundKind(item);
     let providerCompleted = false;
+    let sdkInvoked = false;
+    let invocationTimedOut = false;
+    const lookup = <T>(work: Promise<T>) => withDeadline(work, this.config.operationTimeoutMs ?? 30_000);
+    const invoke = async <T>(call: () => Promise<T>): Promise<T> => {
+      if (this.stopped) throw new Error("runtime_stopping");
+      sdkInvoked = true;
+      const work = Promise.resolve().then(call);
+      this.providerTasks.add(work);
+      work.then(() => this.providerTasks.delete(work), () => this.providerTasks.delete(work));
+      try { return await withDeadline(work, this.config.operationTimeoutMs ?? 30_000); }
+      catch (error) { if (error instanceof OperationTimeout) invocationTimedOut = true; throw error; }
+    };
     const complete = async (
       providerReturnedAt: string,
       messageId?: string,
@@ -835,14 +884,14 @@ export class GpProofRuntime {
         ...(hasProviderReturn ? { providerReturnedAt } : {}),
         ...(deliveryState === "provider_accepted" ? { providerAcceptedAt: providerReturnedAt } : {}),
         ...(messageId ? { messageId } : {}),
-        lastError: undefined, nextAttemptAt: undefined,
+        lastError: undefined, nextAttemptAt: undefined, blockedBy: undefined,
       });
       if (kind !== "react" && kind !== "typing") this.stopTypingAfterSend(item);
     };
     try {
       const dispatchStartedAt = new Date().toISOString();
       await updateOutbound(item.id, { status: "sending", attempts: nextAttempts, dispatchStartedAt });
-      const space = await this.resolveSpace(item.spaceId);
+      const space = await lookup(this.resolveSpace(item.spaceId));
 
       if (kind === "typing") {
         if (item.kind !== "typing") throw new Error("typing kind mismatch");
@@ -853,22 +902,28 @@ export class GpProofRuntime {
         }
       } else if (kind === "react") {
         if (item.kind !== "react") throw new Error("react kind mismatch");
-        const target = await space.getMessage(item.targetMessageId);
+        const target = await lookup(space.getMessage(item.targetMessageId));
         if (!target) {
           throw new Error(`target message not found: ${item.targetMessageId}`);
         }
         // undefined = platform skipped reactions → treat as done (no retry loop)
-        await target.react(item.emoji);
+        await invoke(() => target.react(item.emoji));
         // Keep typing through a tapback; stop only on text/reply.
       } else if (kind === "reply") {
         if (item.kind !== "reply") throw new Error("reply kind mismatch");
         const delivery = await sendReplyWithFallback(
-          space,
+          {
+            getMessage: async id => {
+              const target = await lookup(space.getMessage(id));
+              return target ? { reply: text => invoke(() => target.reply(text)) } : undefined;
+            },
+            send: text => invoke(() => space.send(text)),
+          },
           item.targetMessageId,
           item.text,
         );
         if (delivery.status === "unknown") {
-          await this.scheduleRetry(item.id, nextAttempts, delivery.reason);
+          await this.quarantineSend(item.id, nextAttempts, delivery.reason);
           return;
         }
         if (delivery.status === "failed") {
@@ -888,16 +943,16 @@ export class GpProofRuntime {
         await complete(delivery.providerReturnedAt, delivery.messageId);
       } else if (kind === "voice") {
         if (item.kind !== "voice") throw new Error("voice kind mismatch");
-        const sent = await space.send(
+        const sent = await invoke(() => space.send(
           voice(item.audioPath, {
             ...(typeof item.durationSeconds === "number"
               ? { duration: item.durationSeconds }
               : {}),
           }),
-        );
+        ));
         const providerReturnedAt = new Date().toISOString();
         if (sent === undefined) {
-          await this.scheduleRetry(item.id, nextAttempts, "undefined-result", providerReturnedAt);
+          await this.quarantineSend(item.id, nextAttempts, "undefined-result", providerReturnedAt);
           return;
         }
         await complete(providerReturnedAt, sent.id);
@@ -907,10 +962,10 @@ export class GpProofRuntime {
         return;
       } else if (kind === "poll") {
         if (item.kind !== "poll") throw new Error("poll kind mismatch");
-        const sent = await space.send(poll(item.title, item.options));
+        const sent = await invoke(() => space.send(poll(item.title, item.options)));
         const providerReturnedAt = new Date().toISOString();
         if (sent === undefined) {
-          await this.scheduleRetry(item.id, nextAttempts, "undefined-result", providerReturnedAt);
+          await this.quarantineSend(item.id, nextAttempts, "undefined-result", providerReturnedAt);
           return;
         }
         await complete(providerReturnedAt, sent.id);
@@ -924,12 +979,12 @@ export class GpProofRuntime {
       } else if (kind === "app") {
         if (item.kind !== "app") throw new Error("app kind mismatch");
         const live = item.live === true;
-        const sent = await space.send(
+        const sent = await invoke(() => space.send(
           live ? app(item.url, { live: true }) : app(item.url),
-        );
+        ));
         const providerReturnedAt = new Date().toISOString();
         if (sent === undefined) {
-          await this.scheduleRetry(item.id, nextAttempts, "undefined-result", providerReturnedAt);
+          await this.quarantineSend(item.id, nextAttempts, "undefined-result", providerReturnedAt);
           return;
         }
         await complete(providerReturnedAt, sent.id);
@@ -951,7 +1006,7 @@ export class GpProofRuntime {
       } else if (kind === "app_update") {
         if (item.kind !== "app_update") throw new Error("app_update kind mismatch");
         const live = item.live === true;
-        let target = await space.getMessage(item.targetMessageId);
+        let target = await lookup(space.getMessage(item.targetMessageId));
         if (!target) {
           throw new Error(`target message not found: ${item.targetMessageId}`);
         }
@@ -960,9 +1015,9 @@ export class GpProofRuntime {
           await updateOutbound(item.id, { status: "failed", attempts: nextAttempts, failedAt: new Date().toISOString(), lastError: "missing_app_card_session" });
           return;
         }
-        const sent = await space.send(
+        const sent = await invoke(() => space.send(
           edit(live ? app(item.url, { live: true }) : app(item.url), target),
-        );
+        ));
         const providerReturnedAt = new Date().toISOString();
         // Undefined edits are completed control requests, not accepted messages.
         await complete(providerReturnedAt, sent?.id, sent === undefined ? "control_requested" : "provider_accepted");
@@ -999,10 +1054,10 @@ export class GpProofRuntime {
           attachment(paths[1]!),
           ...paths.slice(2).map((p) => attachment(p)),
         );
-        const sent = await space.send(payload);
+        const sent = await invoke(() => space.send(payload));
         const providerReturnedAt = new Date().toISOString();
         if (sent === undefined) {
-          await this.scheduleRetry(item.id, nextAttempts, "undefined-result", providerReturnedAt);
+          await this.quarantineSend(item.id, nextAttempts, "undefined-result", providerReturnedAt);
           return;
         }
         await complete(providerReturnedAt, sent.id);
@@ -1049,10 +1104,10 @@ export class GpProofRuntime {
             `outbound effect=${textItem.effect} id=${item.id} space=${item.spaceId}`,
           );
         }
-        const sent = await space.send(payload);
+        const sent = await invoke(() => space.send(payload));
         const providerReturnedAt = new Date().toISOString();
         if (sent === undefined) {
-          await this.scheduleRetry(item.id, nextAttempts, "undefined-result", providerReturnedAt);
+          await this.quarantineSend(item.id, nextAttempts, "undefined-result", providerReturnedAt);
           return;
         }
         await complete(providerReturnedAt, sent.id);
@@ -1062,17 +1117,31 @@ export class GpProofRuntime {
       // is not evidence of a provider return. Reactions await the SDK directly.
       if (!providerCompleted) await complete(new Date().toISOString(), undefined, "control_requested", kind !== "typing");
       log(`outbound sent kind=${kind} id=${item.id} space=${item.spaceId}`);
-    } catch {
+    } catch (error) {
       if (providerCompleted) {
         log(`outbound completion bookkeeping failed kind=${kind} id=${item.id}`);
         return;
       }
-      await this.scheduleRetry(item.id, nextAttempts, "send-threw");
-      log(`outbound throw kind=${kind} id=${item.id}`);
+      if (isDefinitiveSendRejection(error)) await updateOutbound(item.id, { status: "failed", attempts: nextAttempts, failedAt: new Date().toISOString(), lastError: "send_rejected_validation_or_auth", nextAttemptAt: undefined });
+      else if (sdkInvoked) await this.quarantineSend(item.id, nextAttempts, "send-threw");
+      else await this.retryBeforeSend(item.id, nextAttempts, error);
+      log(`outbound failure kind=${kind} id=${item.id}`);
+    } finally {
+      if (invocationTimedOut) void this.stop().catch(() => {});
     }
   }
 
-  private async scheduleRetry(
+  private async retryBeforeSend(id: string, attempts: number, error: unknown): Promise<void> {
+    const failure = error as { name?: string; status?: number; message?: string };
+    const permanent = ["ValidationError", "AuthenticationError", "AuthorizationError", "UnauthorizedError", "ForbiddenError"].includes(failure?.name ?? "") || [401, 403].includes(failure?.status ?? 0) || ["unverified_conversation", "runtime_stopping"].includes(failure?.message ?? "");
+    if (permanent || attempts >= 3) {
+      await updateOutbound(id, { status: "failed", attempts, failedAt: new Date().toISOString(), lastError: permanent ? "pre_send_validation_or_auth_failed" : "pre_send_retry_exhausted", nextAttemptAt: undefined });
+    } else {
+      await updateOutbound(id, { status: "queued", attempts, lastError: "pre_send_retry_pending", nextAttemptAt: new Date(Date.now() + 250 * 4 ** (attempts - 1)).toISOString() });
+    }
+  }
+
+  private async quarantineSend(
     id: string,
     nextAttempts: number,
     lastError: string,

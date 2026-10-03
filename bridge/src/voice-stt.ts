@@ -68,9 +68,14 @@ export async function ensureVoiceWav16k(
     ],
     { stdout: "pipe", stderr: "pipe" },
   );
-  const timer = setTimeout(() => { try { proc.kill(); } catch { /* already exited */ } }, 30_000);
+  let killTimer: ReturnType<typeof setTimeout> | undefined;
+  const timer = setTimeout(() => {
+    try { proc.kill(); } catch { /* already exited */ }
+    killTimer = setTimeout(() => { try { proc.kill(9); } catch { /* already exited */ } }, 1_000);
+  }, 30_000);
   const [code, err] = await Promise.all([proc.exited, new Response(proc.stderr).text(), new Response(proc.stdout).text()]);
   clearTimeout(timer);
+  if (killTimer) clearTimeout(killTimer);
   if (code !== 0) {
     throw new Error(
       `ffmpeg CAF→16k wav failed (exit ${code}): ${err.slice(0, 400)}`,
@@ -116,12 +121,14 @@ export async function transcribeVoiceWav(
       [python, script, "--wav", wavPath, "--model", model],
       { stdout: "pipe", stderr: "pipe" },
     );
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
     const timer = setTimeout(() => {
       try {
         proc.kill();
       } catch {
         /* ignore */
       }
+      killTimer = setTimeout(() => { try { proc.kill(9); } catch { /* already exited */ } }, 1_000);
     }, timeoutMs);
     const [code, stdout, stderr] = await Promise.all([
       proc.exited,
@@ -129,6 +136,7 @@ export async function transcribeVoiceWav(
       new Response(proc.stderr).text(),
     ]);
     clearTimeout(timer);
+    if (killTimer) clearTimeout(killTimer);
 
     const trimmed = stdout.trim();
     let parsed: { text?: string; error?: string } = {};

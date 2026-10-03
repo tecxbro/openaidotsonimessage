@@ -106,6 +106,8 @@ export type UnreadBatch = {
   batchId: string;
   flushedAt: string;
   messages: InboundRecord[];
+  /** Earlier admitted media still processing in these conversations. */
+  pendingMedia?: Array<{ messageId: string; spaceId: string; kind?: "attachment" | "voice"; streamReceivedAt?: string; lastError?: "media_operation_timeout" }>;
   /** Set when runtime already answered (skip Front Door / Chatty). */
   handledBy?: "runtime-greeting";
 };
@@ -132,6 +134,7 @@ type OutboundBase = {
   failedAt?: string;
   lastError?: string;
   nextAttemptAt?: string;
+  blockedBy?: string;
 };
 
 /** Missing `kind` is treated as text for backward compatibility. */
@@ -278,4 +281,8 @@ export type Config = {
   greetingFastPath?: boolean;
   /** Refuse startup if an explicitly initialized recovery policy is absent. */
   requireRecoveryPolicy?: boolean;
+  operationTimeoutMs?: number;
+  shutdownGraceMs?: number;
+  mediaTimeoutMs?: number;
+  mediaConcurrency?: number;
 };
