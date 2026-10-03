@@ -1,3 +1,4 @@
+import { readBatchClaim } from "./batch-claim.ts";
 import { watchPublicationDirectory } from "./runtime-notifications.ts";
 import { DATA_DIR } from "./types.ts";
 import { RuntimeDiagnostics, type DiagnosticOperation } from "./runtime-diagnostics.ts";
@@ -740,6 +741,7 @@ export class GpProofRuntime {
     if (this.webhookActive.has(batchId)) return;
     this.webhookActive.add(batchId);
     try {
+      if ((await readBatchClaim(batchId))?.state === "completed") { await removeWebhookPending(batchId); return; }
       if (this.config.hostMode === "dot-local") {
         await queueDotWake(batchId);
         await removeWebhookPending(batchId);

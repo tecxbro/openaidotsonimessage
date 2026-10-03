@@ -13,6 +13,8 @@ import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { acquireFileLock, withFileLock } from "./file-lock.ts";
+import { createHash } from "node:crypto";
+import { readUnreadBatch } from "./storage.ts";
 import { DATA_DIR } from "./types.ts";
 
 export const DEFAULT_CLAIM_LEASE_MS = 15 * 60 * 1000;
@@ -27,6 +29,7 @@ export type BatchClaim = {
   updatedAt: string;
   leaseExpiresAt: string;
   note?: string;
+  spaceIds?: string[];
 };
 
 const CLAIMS_DIR = join(DATA_DIR, "batch-claims");
@@ -53,7 +56,9 @@ async function readClaim(batchId: string): Promise<BatchClaim | null> {
   try {
     const raw = await readFile(path, "utf8");
     if (!raw.trim()) return null;
-    return JSON.parse(raw) as BatchClaim;
+    const claim = JSON.parse(raw) as BatchClaim;
+    if (claim.batchId !== batchId || typeof claim.owner !== "string" || !["claimed", "completed", "released"].includes(claim.state) || !Number.isFinite(Date.parse(claim.updatedAt)) || !Number.isFinite(Date.parse(claim.claimedAt)) || !Number.isFinite(Date.parse(claim.leaseExpiresAt))) return null;
+    return claim;
   } catch {
     return null;
   }
@@ -62,6 +67,69 @@ async function readClaim(batchId: string): Promise<BatchClaim | null> {
 function leaseExpired(claim: BatchClaim, now = Date.now()): boolean {
   const exp = Date.parse(claim.leaseExpiresAt);
   return !Number.isFinite(exp) || exp <= now;
+}
+
+type Reservation = { batchId: string; owner: string; leaseExpiresAt: string };
+type ConversationOwners = Record<string, Reservation[]>;
+const OWNERS_PATH = join(CLAIMS_DIR, "conversation-owners.json");
+async function batchSpaces(batchId: string): Promise<string[]> {
+  try { return [...new Set((await readUnreadBatch(batchId)).messages.map(message => message.spaceId))]; }
+  catch (error) {
+    // Low-level legacy claims without payload cannot authorize an agent enqueue.
+    if (error instanceof Error && error.message.startsWith("unread batch not found:")) return [];
+    throw error;
+  }
+}
+async function loadOwners(): Promise<ConversationOwners> {
+  try { return JSON.parse(await readFile(OWNERS_PATH, "utf8")); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("corrupt_conversation_owners");
+  }
+  return rebuildOwners();
+}
+async function saveOwners(owners: ConversationOwners): Promise<void> {
+  const tmp = `${OWNERS_PATH}.${process.pid}.tmp`;
+  await writeFile(tmp, JSON.stringify(owners), { mode: 0o600 });
+  await rename(tmp, OWNERS_PATH);
+}
+async function rebuildOwners(): Promise<ConversationOwners> {
+  const { readdir } = await import("node:fs/promises");
+  const owners: ConversationOwners = {};
+  for (const name of await readdir(CLAIMS_DIR).catch(() => [])) {
+    if (!name.endsWith(".json") || name === "conversation-owners.json") continue;
+    const claim = await readClaim(name.slice(0, -5));
+    if (!claim || claim.state !== "claimed" || leaseExpired(claim)) continue;
+    for (const spaceId of claim.spaceIds ?? await batchSpaces(claim.batchId)) {
+      const key = createHash("sha256").update(spaceId).digest("hex");
+      (owners[key] ??= []).push({ batchId: claim.batchId, owner: claim.owner, leaseExpiresAt: claim.leaseExpiresAt });
+    }
+  }
+  await saveOwners(owners);
+  return owners;
+}
+export async function reconcileConversationOwners(): Promise<void> {
+  await withFileLock(join(CLAIMS_DIR, ".claims-lock"), async () => { await rebuildOwners(); });
+}
+async function reserveConversations(batchId: string, owner: string, leaseExpiresAt: string, guard: () => void): Promise<BatchClaim | null> {
+  const owners = await loadOwners();
+  const spaces = await batchSpaces(batchId);
+  for (const spaceId of spaces) {
+    const key = createHash("sha256").update(spaceId).digest("hex");
+    const live: Reservation[] = [];
+    for (const reservation of owners[key] ?? []) {
+      const record = await readClaim(reservation.batchId);
+      if (record?.state === "completed") continue;
+      if (Date.parse(reservation.leaseExpiresAt) <= Date.now()) continue;
+      if (reservation.owner !== owner) return record ?? { ...reservation, state: "claimed", claimedAt: "", updatedAt: "" };
+      if (reservation.batchId !== batchId) live.push(reservation);
+    }
+    owners[key] = [...live, { batchId, owner, leaseExpiresAt }];
+  }
+  // Reserve before claim publication. A crash retains a lease-bound owner;
+  // another task cannot answer while that owner can still enqueue.
+  guard();
+  await saveOwners(owners);
+  return null;
 }
 
 export type ClaimAttempt =
@@ -85,10 +153,11 @@ async function tryClaimBatchUnlocked(
   const leaseExpiresAt = new Date(now + leaseMs).toISOString();
 
   const existing = await readClaim(batchId);
+  if (existing?.state === "completed") return { ok: false, reason: "already_completed", claim: existing };
+  if (existing?.state === "claimed" && existing.owner !== owner && !leaseExpired(existing)) return { ok: false, reason: "owned_by_other", claim: existing };
+  const conflict = await reserveConversations(batchId, owner, leaseExpiresAt, assertCanProceed);
+  if (conflict) return { ok: false, reason: "owned_by_other", claim: conflict };
   if (existing) {
-    if (existing.state === "completed") {
-      return { ok: false, reason: "already_completed", claim: existing };
-    }
     if (existing.owner === owner && existing.state === "claimed") {
       const refreshed: BatchClaim = {
         ...existing,
@@ -116,6 +185,7 @@ async function tryClaimBatchUnlocked(
     claimedAt: nowIso,
     updatedAt: nowIso,
     leaseExpiresAt,
+    spaceIds: await batchSpaces(batchId),
   };
 
   try {
@@ -171,6 +241,14 @@ async function markBatchClaimCompletedUnlocked(
     mode: 0o600,
   });
   await rename(tmp, path);
+  // Completion and deduplication evidence stay durable; only the active notice retires.
+  await unlink(join(DATA_DIR, "dot-inbox", `${batchId}.json`)).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
+  const owners = await loadOwners();
+  for (const key of Object.keys(owners)) {
+    owners[key] = owners[key]!.filter(reservation => reservation.batchId !== batchId);
+    if (!owners[key]!.length) delete owners[key];
+  }
+  await saveOwners(owners);
   return done;
 }
 

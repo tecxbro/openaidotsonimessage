@@ -1,7 +1,7 @@
 /** One-shot active-host inbox wait. This never opens a Spectrum connection. */
 import { watch, type FSWatcher } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { DOT_INBOX_DIR, pendingDotBatches } from './dot-inbox.ts';
+import { DOT_INBOX_DIR, iteratePendingDotBatches } from './dot-inbox.ts';
 import { readBatchClaim, tryClaimBatchNow, type BatchClaim } from './batch-claim.ts';
 import type { UnreadBatch } from './types.ts';
 
@@ -22,6 +22,7 @@ export async function waitForDotBatch(
   if (!Number.isFinite(pollMs) || pollMs < 10 || pollMs > 10_000) throw new Error('invalid_poll_interval');
   await mkdir(DOT_INBOX_DIR, { recursive: true, mode: 0o700 });
   const started = performance.now();
+  const shouldProceed = () => !options.signal?.aborted && (timeoutMs === 0 || performance.now() - started < timeoutMs);
   const elapsed = () => Math.round(performance.now() - started);
   let revision = 0;
   let wakePending: (() => void) | undefined;
@@ -38,12 +39,11 @@ export async function waitForDotBatch(
     for (;;) {
       if (options.signal?.aborted) return { status: 'cancelled', ok: false, waitedMs: elapsed() };
       const seen = revision;
-      for (const batch of await pendingDotBatches()) {
+      for await (const batch of iteratePendingDotBatches(shouldProceed)) {
         const claim = await readBatchClaim(batch.batchId);
         if (claim?.state === 'claimed' && claim.owner !== owner && Date.parse(claim.leaseExpiresAt) > Date.now()) continue;
         if (options.signal?.aborted) return { status: 'cancelled', ok: false, waitedMs: elapsed() };
-        const attempt = await tryClaimBatchNow(batch.batchId, owner, () =>
-          !options.signal?.aborted && (timeoutMs === 0 || performance.now() - started < timeoutMs));
+        const attempt = await tryClaimBatchNow(batch.batchId, owner, shouldProceed);
         if (attempt?.ok) return { status: 'claimed', ...attempt, batch };
       }
       const remaining = timeoutMs - (performance.now() - started);

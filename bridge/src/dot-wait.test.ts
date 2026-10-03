@@ -9,8 +9,8 @@ import { markBatchClaimCompleted, tryClaimBatch, tryClaimBatchNow, readBatchClai
 import { waitForDotBatch } from './dot-wait.ts';
 
 beforeEach(async () => { await rm(DATA_DIR, { recursive: true, force: true }); await mkdir(DATA_DIR, { recursive: true }); });
-async function publish(batchId: string) {
-  await writeUnreadBatch({ batchId, flushedAt: new Date().toISOString(), messages: [{ id: `${batchId}-message`, spaceId: 'space', senderId: 'owner', text: 'a real task', timestamp: new Date().toISOString(), receivedAt: new Date().toISOString() }] });
+async function publish(batchId: string, spaceId = "space") {
+  await writeUnreadBatch({ batchId, flushedAt: new Date().toISOString(), messages: [{ id: `${batchId}-message`, spaceId, senderId: 'owner', text: 'a real task', timestamp: new Date().toISOString(), receivedAt: new Date().toISOString() }] });
   await queueDotWake(batchId);
 }
 
@@ -44,7 +44,7 @@ test('two waiters race safely: exactly one owner claims a batch', async () => {
 test('completed and other-owner batches do not block later available work', async () => {
   await publish('a-completed'); await tryClaimBatch('a-completed', 'other'); await markBatchClaimCompleted('a-completed', 'other');
   await publish('b-busy'); await tryClaimBatch('b-busy', 'other');
-  await publish('c-ready');
+  await publish('c-ready', 'another-space');
   const result = await waitForDotBatch('dot-parent', { timeoutMs: 0 });
   expect(result.status).toBe('claimed');
   if (result.status === 'claimed') expect(result.batch.batchId).toBe('c-ready');
@@ -95,4 +95,47 @@ test('a guard closing after lock acquisition prevents a claim mutation', async (
   const attempt = await tryClaimBatchNow('cancelled-under-lock', 'dot-parent', () => ++checks === 1);
   expect(attempt).toBeNull();
   expect(await readBatchClaim('cancelled-under-lock')).toBeNull();
+});
+
+ test('later bubbles cannot acquire a competing owner for the same conversation', async () => {
+  await publish('first-turn'); await publish('next-turn');
+  expect((await tryClaimBatch('first-turn', 'active-owner')).ok).toBe(true);
+  const competing = await tryClaimBatch('next-turn', 'competing-owner');
+  expect(competing.ok).toBe(false);
+  if (!competing.ok) expect(competing.reason).toBe('owned_by_other');
+  await markBatchClaimCompleted('first-turn', 'active-owner');
+  expect((await tryClaimBatch('next-turn', 'active-owner')).ok).toBe(true);
+});
+
+ test('completed notices stay retired after recovery while unfinished input remains', async () => {
+  const { recoverDurableState } = await import('./recovery.ts');
+  const { listWebhookPending } = await import('./storage.ts');
+  const { pendingDotBatches } = await import('./dot-inbox.ts');
+  await publish('done'); await tryClaimBatch('done', 'owner'); await markBatchClaimCompleted('done', 'owner');
+  await publish('unfinished');
+  await recoverDurableState();
+  for (const batchId of await listWebhookPending()) await queueDotWake(batchId);
+  expect((await pendingDotBatches()).map(batch => batch.batchId)).toEqual(['unfinished']);
+  expect((await readBatchClaim('done'))?.state).toBe('completed');
+});
+
+ test('large stale completed history respects short scan deadlines and keeps fresh input', async () => {
+  const { writeFile, readdir } = await import('node:fs/promises');
+  const { DOT_INBOX_DIR, pendingDotBatches } = await import('./dot-inbox.ts');
+  const now = new Date().toISOString();
+  await mkdir(join(DATA_DIR, 'batch-claims'), { recursive: true });
+  await mkdir(DOT_INBOX_DIR, { recursive: true });
+  for (let i = 0; i < 1200; i++) {
+    const batchId = `a-old-${String(i).padStart(5, '0')}`;
+    await writeFile(join(DOT_INBOX_DIR, `${batchId}.json`), JSON.stringify({ batchId }));
+    await writeFile(join(DATA_DIR, 'batch-claims', `${batchId}.json`), JSON.stringify({ batchId, owner: 'old', state: 'completed', claimedAt: now, updatedAt: now, leaseExpiresAt: now }));
+    // No historical payload: a completion record is enough to retire a notice.
+  }
+  await publish('z-fresh');
+  const start = performance.now();
+  expect((await waitForDotBatch('owner', { timeoutMs: 5 })).status).toBe('timeout');
+  expect(performance.now() - start).toBeLessThan(150);
+  expect((await pendingDotBatches()).map(batch => batch.batchId)).toEqual(['z-fresh']);
+  expect(await readdir(DOT_INBOX_DIR)).toEqual(['z-fresh.json']);
+  expect((await waitForDotBatch('owner', { timeoutMs: 0 })).status).toBe('claimed');
 });

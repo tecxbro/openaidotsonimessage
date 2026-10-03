@@ -93,11 +93,14 @@ export async function loadHandledIds(): Promise<Set<string>> {
   });
 }
 
-export async function addHandledId(id: string): Promise<void> {
+export async function addHandledId(id: string): Promise<void> { await addHandledIds([id]); }
+export async function addHandledIds(ids: string[]): Promise<void> {
   await withLock(async () => {
     const file = await readJson<HandledFile>(HANDLED_PATH, { ids: [] });
-    if (!file.ids.includes(id)) file.ids.push(id);
-    await atomicWriteJson(HANDLED_PATH, file);
+    const known = new Set(file.ids);
+    for (const id of ids) known.add(id);
+    if (known.size === file.ids.length) return;
+    await atomicWriteJson(HANDLED_PATH, { ids: [...known] });
   });
 }
 
@@ -152,7 +155,8 @@ export async function addWebhookPending(batchId: string): Promise<void> {
     const file = await readJson<WebhookPendingFile>(WEBHOOK_PENDING_PATH, {
       batchIds: [],
     });
-    if (!file.batchIds.includes(batchId)) file.batchIds.push(batchId);
+    if (file.batchIds.includes(batchId)) return;
+    file.batchIds.push(batchId);
     await atomicWriteJson(WEBHOOK_PENDING_PATH, file);
   });
 }
@@ -162,6 +166,7 @@ export async function removeWebhookPending(batchId: string): Promise<void> {
     const file = await readJson<WebhookPendingFile>(WEBHOOK_PENDING_PATH, {
       batchIds: [],
     });
+    if (!file.batchIds.includes(batchId)) return;
     file.batchIds = file.batchIds.filter((id) => id !== batchId);
     await atomicWriteJson(WEBHOOK_PENDING_PATH, file);
   });
