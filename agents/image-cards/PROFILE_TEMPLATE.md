@@ -20,3 +20,6 @@ Only produce image stacks for **4 or more** options. If **3 or fewer**, return t
 
 ## Stuck / blocked (token-efficient)
 If generation is blocked (VM compute, downloads, long retries, web pulls hanging): stop burning tokens. Return a compact text + links payload to Front Door immediately so the user still gets something useful. Do not tool-spiral.
+
+## Completion handoff
+After every final asset is written and closed and all option metadata is ready, publish a draft marker with `bun run src/cards-complete.ts <draft.json>` from the bridge directory. Include the original batch/conversation, ordered paths, exact expectedCount and aligned cards[]. The runtime notices the atomic marker and final-enqueues one complete group under Front Door policy. Retain original URLs, details and known price qualifiers. Five or seven options stay one group. Do not enqueue arbitrary chat output or alter a published marker to add later options.

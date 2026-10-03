@@ -116,3 +116,35 @@ test('enqueue while sending is reconciled after settlement and duplicate notific
     await f.probe.drainOutbound(); expect(calls).toBe(2);
   } finally { release(); await f.runtime.stop(); await f.running; }
 });
+
+test('complete card publication wakes final enqueue without maintenance or stability timers', async () => {
+  const { writeCardsReadyMarker, CARDS_READY_DIR } = await import('./cards-ready.ts');
+  const { writeUnreadBatch } = await import('./storage.ts');
+  const { copyFile, writeFile } = await import('node:fs/promises');
+  let calls = 0;
+  const f = await runningFixture(space(async () => ({ id: `cards-${++calls}` })));
+  try {
+    for (const count of [5, 7]) {
+      const batchId = `stack-${count}`;
+      await writeUnreadBatch({ batchId, flushedAt: new Date().toISOString(), messages: [{ id: `input-${count}`, spaceId: 'space', senderId: 'owner', text: 'options', timestamp: new Date().toISOString(), receivedAt: new Date().toISOString() }] });
+      const paths = Array.from({ length: count }, (_, i) => join(DATA_DIR, `${batchId}-${i}.png`));
+      for (const path of paths) await copyFile('/tmp/gpproof-1x1.png', path);
+      const marker = { batchId, spaceId: 'space', attachmentPaths: paths, expectedCount: count, cards: paths.map((_, i) => ({ optionId: `option-${i}`, title: `Option ${i}`, url: `https://example.com/${i}`, price: '$10 / month' })), readyAt: new Date().toISOString() };
+      await expect(writeCardsReadyMarker({ ...marker, expectedCount: count + 1 })).rejects.toThrow('complete_card_metadata');
+      await expect(writeCardsReadyMarker({ ...marker, cards: marker.cards.slice(1) })).rejects.toThrow('metadata');
+      const original = await readFile(paths[0]!);
+      await writeFile(paths[0]!, original.subarray(0, -12));
+      await expect(writeCardsReadyMarker(marker)).rejects.toThrow('incomplete');
+      await writeFile(paths[0]!, original);
+      await writeCardsReadyMarker(marker);
+      await enqueueOutbound({ kind: 'attachment_group', batchId, spaceId: 'space', attachmentPaths: paths, cards: marker.cards });
+      await until(async () => (await loadOutboundQueue()).some(item => item.kind === 'attachment_group' && item.batchId === batchId && item.status === 'sent'));
+      const groups = (await loadOutboundQueue()).filter(item => item.kind === 'attachment_group' && item.batchId === batchId);
+      expect(groups).toHaveLength(1);
+      expect(groups[0]!.kind === 'attachment_group' && groups[0]!.attachmentPaths.length).toBe(count);
+      const consumed = JSON.parse(await readFile(join(CARDS_READY_DIR, `${batchId}.json`), 'utf8'));
+      expect(consumed.cards).toEqual(marker.cards);
+    }
+    expect(calls).toBe(2);
+  } finally { await f.runtime.stop(); await f.running; }
+});

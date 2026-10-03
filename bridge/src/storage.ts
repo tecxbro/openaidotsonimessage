@@ -415,6 +415,11 @@ function buildOutboundItems(input: EnqueueOutboundInput): OutboundItem[] {
   }));
 }
 
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+}
+
 export async function enqueueOutbound(
   input: EnqueueOutboundInput,
   requestId?: string,
@@ -429,9 +434,10 @@ export async function enqueueOutbound(
     if (authorize) await authorize();
     if (requestId) {
       const existing = file.items.filter(item => item.requestId === requestId);
-      const hash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
+      const hash = createHash("sha256").update(stableJson(input)).digest("hex");
+      const legacyHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
       if (existing.length) {
-        if (existing.some(item => item.requestHash && item.requestHash !== hash)) throw new Error("idempotency_key_content_mismatch");
+        if (existing.some(item => item.requestHash && item.requestHash !== hash && item.requestHash !== legacyHash)) throw new Error("idempotency_key_content_mismatch");
         return existing;
       }
       for (const item of items) { item.requestId = requestId; item.requestHash = hash; }

@@ -23,7 +23,9 @@ An optional Live Mini worker prepares or updates read-only progress-card state w
 4. Completion is recorded only after a durable result, accepted enqueue, or intentional no-send outcome. Queue acceptance is separate from delivery verification.
 5. Long-running work refreshes the same owner's claim. If another owner holds an unexpired claim, do not bypass it.
 
-The existing cards-ready watchdog can enqueue a prepared image stack. Treat a complete cards-ready marker as an outbound commitment, not an inert draft. Choose either that established path or direct front-door enqueue, and check existing queue state to avoid dual sends.
+Routine text stays with one active task, which receives/claims, reasons, and uses the stdin `dot-agent reply` command. Rich actions retain their appropriate enqueue kinds. Reuse available context and avoid routine full status/history/setup reads. New input stays with the conversation owner and is processed at a turn boundary unless the host actually supports native task steering.
+
+The existing cards-ready path notices explicit completion immediately and can enqueue a prepared image stack. Treat a complete cards-ready marker as an outbound commitment, not an inert draft. Choose either that established path or direct front-door enqueue, and check existing queue state to avoid dual sends.
 
 ## Preserve the original interaction rules
 

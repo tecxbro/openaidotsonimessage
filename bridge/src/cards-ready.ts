@@ -22,6 +22,8 @@ import { DATA_DIR, type CardOptionMeta } from "./types.ts";
 import {
   enqueueOutbound,
   loadOutboundQueue,
+  readUnreadBatch,
+  validateId,
 } from "./storage.ts";
 
 export const IMAGE_CARDS_BOT_ID = "{{IMAGE_CARDS_BOT_ID}}";
@@ -98,15 +100,41 @@ async function atomicWriteJson(path: string, value: unknown): Promise<void> {
 }
 
 export function cardsReadyMarkerPath(batchId: string): string {
+  validateId(batchId);
   return join(CARDS_READY_DIR, `${batchId}.json`);
 }
 
 export async function writeCardsReadyMarker(
   marker: CardsReadyMarker,
 ): Promise<string> {
+  if (!Number.isInteger(marker.expectedCount) || marker.expectedCount !== marker.attachmentPaths.length || !marker.cards) throw new Error("complete_card_metadata_required");
+  if (!await validCardFiles(marker.attachmentPaths, marker.cards)) throw new Error("incomplete_card_files_or_metadata");
+  await assertOriginalCardConversation(marker.batchId, marker.spaceId);
   const path = cardsReadyMarkerPath(marker.batchId);
   await atomicWriteJson(path, marker);
   return path;
+}
+
+/** Explicit completion does not infer readiness from mtime. Reject truncated
+ * raster envelopes; the producer must close every file before publishing. */
+async function validCardFiles(paths: string[], cards?: CardOptionMeta[]): Promise<boolean> {
+  if (!Array.isArray(paths) || paths.length < MIN_STACK_CARDS || new Set(paths).size !== paths.length) return false;
+  if (cards && (cards.length !== paths.length || cards.some(card => !card || typeof card !== "object"))) return false;
+  for (const path of paths) {
+    try {
+      const bytes = await readFile(path);
+      const png = bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) && bytes.subarray(-12).equals(Buffer.from([0,0,0,0,73,69,78,68,174,66,96,130]));
+      const jpeg = bytes[0] === 255 && bytes[1] === 216 && bytes.at(-2) === 255 && bytes.at(-1) === 217;
+      const webp = bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP" && bytes.readUInt32LE(4) + 8 === bytes.length;
+      if (!png && !jpeg && !webp) return false;
+    } catch { return false; }
+  }
+  return true;
+}
+
+async function assertOriginalCardConversation(batchId: string, spaceId: string): Promise<void> {
+  const batch = await readUnreadBatch(batchId);
+  if (!batch.messages.some(message => message.spaceId === spaceId)) throw new Error("original_batch_space_required");
 }
 
 export async function readCardsReadyMarker(
@@ -281,14 +309,14 @@ export async function findReadyImageStacks(opts?: {
       } catch {
         continue;
       }
+      if (marker.batchId) seen.add(marker.batchId); // Invalid markers must not fall through to heuristic publication.
       if (marker.consumedAt) continue;
       if (!marker.batchId || !marker.spaceId) continue;
       const paths = marker.attachmentPaths ?? [];
-      if (!paths.every(p => p && existsSync(p))) continue;
-      if (marker.cards && marker.cards.length !== paths.length) continue;
+      if (!await validCardFiles(paths, marker.cards)) continue;
       const expected = marker.expectedCount ?? paths.length;
       if (paths.length < MIN_STACK_CARDS) continue;
-      if (paths.length < expected) continue;
+      if (!Number.isInteger(expected) || paths.length !== expected) continue;
       if (await outboundAlreadyCoversBatch(marker.batchId)) {
         marker.consumedAt = new Date(nowMs).toISOString();
         marker.consumedBy = "idempotent-outbound-exists";
@@ -383,7 +411,8 @@ export async function consumeCardsReadyMarker(
 export async function finalEnqueueReadyStack(
   stack: ReadyStack,
 ): Promise<{ outboundIds: string[] } | null> {
-  if (stack.attachmentPaths.length < MIN_STACK_CARDS) return null;
+  if (!await validCardFiles(stack.attachmentPaths, stack.cards)) return null;
+  await assertOriginalCardConversation(stack.batchId, stack.spaceId);
   if (await outboundAlreadyCoversBatch(stack.batchId)) {
     if (stack.markerPath) {
       await consumeCardsReadyMarker(stack.markerPath, {

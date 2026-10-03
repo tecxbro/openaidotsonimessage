@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, stat, rename, rm } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { DATA_DIR } from "./types.ts";
@@ -105,7 +105,11 @@ export async function ensureOutboundJpeg(path: string): Promise<string> {
   if (existsSync(out)) {
     return out;
   }
-  await runFfmpeg(trimmed, out);
+  const temporary = `${out}.${randomUUID()}.tmp.jpg`;
+  try {
+    await runFfmpeg(trimmed, temporary);
+    await rename(temporary, out);
+  } finally { await rm(temporary, { force: true }); }
   return out;
 }
 

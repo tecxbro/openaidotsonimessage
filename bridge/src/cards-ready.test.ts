@@ -16,7 +16,7 @@ import {
   listBatchAssetPaths,
   MIN_STACK_CARDS,
 } from "./cards-ready.ts";
-import { updateOutbound } from "./storage.ts";
+import { writeUnreadBatch, updateOutbound } from "./storage.ts";
 
 const ROOT = "/tmp/gpproof-cards-ready-test";
 const HANDLED = join(ROOT, "orchestrator-handled");
@@ -82,7 +82,7 @@ describe("listBatchAssetPaths", () => {
   afterEach(() => rmSync(ROOT, { recursive: true, force: true }));
 
   test("orders by NN and ignores underscore manifests", async () => {
-    const batchId = "{{DEPLOY_ID_PREFIX}}-b-testbatch";
+    const batchId = "dot-b-testbatch";
     touchAsset(batchId, "02", "b", 30_000);
     touchAsset(batchId, "01", "a", 30_000);
     touchAsset(batchId, "03", "c", 30_000);
@@ -99,7 +99,7 @@ describe("findReadyImageStacks + finalEnqueue", () => {
   afterEach(() => rmSync(ROOT, { recursive: true, force: true }));
 
   test("marker with ≥4 existing paths is ready", async () => {
-    const batchId = `{{DEPLOY_ID_PREFIX}}-b-marker-${Date.now()}`;
+    const batchId = `dot-b-marker-${Date.now()}`;
     const spaceId = `test-space-marker-${Date.now()}`;
     const paths = ["01", "02", "03", "04", "05"].map((nn) =>
       touchAsset(batchId, nn, `card${nn}`, 30_000),
@@ -126,6 +126,7 @@ describe("findReadyImageStacks + finalEnqueue", () => {
     expect(ready2[0]!.attachmentPaths.length).toBe(5);
     expect(ready2[0]!.source).toBe("marker");
 
+    await writeUnreadBatch({ batchId, flushedAt: new Date().toISOString(), messages: [{ id: "original", spaceId, senderId: "owner", text: "options", timestamp: new Date().toISOString(), receivedAt: new Date().toISOString() }] });
     const result = await finalEnqueueReadyStack(ready2[0]!);
     expect(result).not.toBeNull();
     expect(result!.outboundIds.length).toBeGreaterThanOrEqual(1);
@@ -146,7 +147,7 @@ describe("findReadyImageStacks + finalEnqueue", () => {
   });
 
   test("disk-scan waits for expectedCount and stability", async () => {
-    const batchId = `{{DEPLOY_ID_PREFIX}}-b-disk-${Date.now()}`;
+    const batchId = `dot-b-disk-${Date.now()}`;
     const spaceId = `test-space-disk-${Date.now()}`;
     writeFileSync(
       join(HANDLED, `${batchId}.json`),
@@ -185,7 +186,7 @@ describe("findReadyImageStacks + finalEnqueue", () => {
   });
 
   test("fresh files within stable window are not ready", async () => {
-    const batchId = `{{DEPLOY_ID_PREFIX}}-b-fresh-${Date.now()}`;
+    const batchId = `dot-b-fresh-${Date.now()}`;
     const spaceId = `test-space-fresh-${Date.now()}`;
     writeFileSync(
       join(HANDLED, `${batchId}.json`),

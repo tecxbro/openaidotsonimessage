@@ -75,7 +75,7 @@ Front Door releases after handoff; **you must not leave PNGs on disk with no enq
 
 When the full batch is complete (≥4, all options):
 
-1. Write marker (atomic JSON). The `cards[]` array is mandatory and aligned 1:1 with `attachmentPaths`; include stable `optionId`, `title`, existing `details`/`caption`, the original direct `url`, and `price` only when known. Preserve price qualifiers in the string (including rent period when applicable). **Missing price stays missing**; do not invent a placeholder price. `nn`/`slug` may support filenames but do not replace option metadata:
+1. After every final image file is written and closed, save the complete JSON below to a draft file outside `data/cards-ready/`, then publish with `bun run src/cards-complete.ts <draft.json>` from the bridge directory. This command validates the original batch/conversation, exact count, complete image files and aligned metadata before atomically publishing the marker. Do not write a partial marker or append options to a published marker. The `cards[]` array is mandatory and aligned 1:1 with `attachmentPaths`; include stable `optionId`, `title`, existing `details`/`caption`, the original direct `url`, and `price` only when known. Preserve price qualifiers in the string (including rent period when applicable). **Missing price stays missing**; do not invent a placeholder price. `nn`/`slug` may support filenames but do not replace option metadata:
 
 ```json
 {
@@ -141,7 +141,7 @@ Path: `{{BRIDGE_ROOT}}/data/cards-ready/<batchId>.json`
 
 2. **WakeParent / `SendToAgent` Front Door `{{FRONT_DOOR_BOT_ID}}`** (priority true) with RESULT: batchId, spaceId, paths, expectedCount. Ask FD to final-enqueue one `attachment_group` of **all** paths.
 
-3. **Do not** `bun run enqueue` yourself (specialist direct-enqueue not verified). Runtime watchdog will final-enqueue from the marker if FD wake is delayed — that is the durable backup, not a license to self-send.
+3. **Do not** `bun run enqueue` yourself (specialist direct-enqueue not verified). Runtime directory notification immediately runs the existing final-enqueue path for the complete marker; periodic scan remains recovery. The marker is an outbound commitment under Front Door policy, not a license to self-send.
 
 4. Naming: `data/outbound-assets/<batchId>-NN-slug.png` with `NN` = `01`, `02`, … matching `expectedCount`. Image Cards must include `cards[]`, aligned to `attachmentPaths` order, so part order matches the attachment paths. The bridge attaches `partIndex` mapping after send for Tapback resolution.
 

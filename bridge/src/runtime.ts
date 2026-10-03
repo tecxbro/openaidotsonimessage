@@ -56,7 +56,7 @@ import {
   loadAppCardSession,
   type AppCardSession,
 } from "./storage.ts";
-import { drainCardsReady } from "./cards-ready.ts";
+import { CARDS_READY_DIR, drainCardsReady } from "./cards-ready.ts";
 import {
   applyResolvedOptionToInbound,
   persistAttachmentGroupMapping,
@@ -254,6 +254,9 @@ export class GpProofRuntime {
     this.notificationClosers.push(await watchPublicationDirectory(DATA_DIR,
       name => name === "outbound-queue.json",
       () => this.requestMaintenance("outbound_drain", () => this.drainOutbound())));
+    this.notificationClosers.push(await watchPublicationDirectory(CARDS_READY_DIR,
+      name => name.endsWith(".json"),
+      () => this.requestMaintenance("cards_ready", () => this.drainCardsReadyWatchdog())));
     this.outboundTimer = setInterval(() => {
       void this.runMaintenance("outbound_drain", () => this.drainOutbound());
     }, 500);

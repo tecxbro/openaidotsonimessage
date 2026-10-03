@@ -138,6 +138,8 @@ Only one active inbox consumer should use an owner string. Complete or intention
 
 A successful claim returns `ok: true` and the batch. Stop if the result is `owned_by_other` or `already_completed`. The default lease is 15 minutes; repeating `claim` with the same owner refreshes it. A claim is exclusivity for processing, not permission to exceed the user's request.
 
+The active task handles routine text directly: wait/claim, reason using the returned batch and available conversation context, then submit its authored answer. Do not add receive-only or send-only model workers, a model polling server, or full status/history/setup reads to ordinary turns. Additional reads require a concrete task need. A waiting CLI serves the active task tool workflow; the local inbox does not activate an inactive task. Grok keeps its existing webhook wake.
+
 For an approved routine plain-text response, `reply` accepts one JSON object on standard input, without an action file:
 
 ```bash
@@ -336,3 +338,10 @@ After that confirmed exit, the replacement was created at 14:03:25 UTC and its e
 ### October 1 point-in-time reliability activation
 
 At **03:48:10.185 UTC on 2026-10-01**, the runtime owner observed `runtime_starting`; `provider_connected` followed at **03:48:16.225 UTC**. The loaded runtime/diagnostics source hashes matched the approved freeze, and the replacement used plain pipes. No message was resent during this activation. This verifies the reviewed patch was loaded and connected at that point in time; it is not an uninterrupted-uptime guarantee, a new speed measurement, or phone/rich-media verification.
+
+## Immediate publication and card completion
+Ordinary committed input schedules publication immediately. The runtime coalesces records already available for the serialized pass, persists the batch and wake intent before clearing buffered input, and releases persistence before waiting for a remote webhook. Later input remains in a new batch; published batches are never extended. Immediate publication cannot group a bubble that has not arrived yet.
+
+The one existing sender watches the data directory for atomic queue replacement before its initial scan. A notification requests a coalesced drain; the drain immediately reconciles durable state again after sending. The 500 ms timer remains recovery for missed events. Directory watching follows the [Node filesystem caveats](https://nodejs.org/api/fs.html#caveats), including missing filenames and inode replacement.
+
+Image producers close all final files, write complete ordered metadata to a draft outside `cards-ready/`, and run `bun run src/cards-complete.ts <draft.json>`. Atomic publication triggers the validated final-enqueue path immediately. The explicit marker requires an exact count and aligned metadata, and verifies the original conversation. It has no 3-second or 12-second delay. Legacy disk scanning retains the 12-second stability heuristic and periodic recovery. Invalid explicit markers cannot fall through to disk inference. All options stay one group using `cards:<batchId>`, including a simultaneous direct enqueue. Legacy markers may omit metadata; new publication commands require it.
